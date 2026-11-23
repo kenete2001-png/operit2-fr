@@ -98,7 +98,8 @@ jobs:
           wget -q https://apt.llvm.org/llvm.sh
           sudo bash llvm.sh 21
           sudo apt-get install -y libclang-21-dev lld-21
-          lib=$(ls /usr/lib/llvm-21/lib/libclang-21.so.21* /usr/lib/llvm-21/lib/libclang.so.21* 2>/dev/null | head -n1)
+          lib=$( (find /usr/lib/llvm-21/lib /usr/lib/x86_64-linux-gnu -maxdepth 1 \( -name 'libclang-21.so.21*' -o -name 'libclang.so.21*' -o -name 'libclang-21.so' -o -name 'libclang.so.1' \) 2>/dev/null || true) | sort | head -n1 )
+          echo "libclang trouvée : $lib"
           test -n "$lib"
           sudo mkdir -p /usr/lib/llvm21/lib
           sudo ln -sf "$lib" /usr/lib/llvm21/lib/libclang.so.21
