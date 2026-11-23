@@ -106,6 +106,14 @@ jobs:
           npm install --prefix .ci-tools/typescript --no-audit --no-fund typescript@5.9.3
           if (-not (Test-Path .ci-tools/typescript/node_modules/.bin/tsc.cmd)) { throw "tsc.cmd absent" }
 
+      - name: Installer pnpm (outils CI)
+        shell: pwsh
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.7.0 --activate
+          npm install -g --no-audit --no-fund pnpm@10.7.0
+          pnpm --version
+
       - name: Install Java
         uses: actions/setup-java@v4
         with:
