@@ -107,7 +107,11 @@ jobs:
 
       - name: Installer le NDK épinglé
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;${V8_NDK_VERSION}" > /dev/null
+          set +o pipefail
+          sdkm="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          (yes 2>/dev/null || true) | "$sdkm" --licenses > /dev/null || true
+          (yes 2>/dev/null || true) | "$sdkm" "ndk;${V8_NDK_VERSION}" > /dev/null
+          test -d "$ANDROID_HOME/ndk/${V8_NDK_VERSION}" || { echo "NDK ${V8_NDK_VERSION} absent"; exit 1; }
           echo "OPERIT_ANDROID_V8_NDK=$ANDROID_HOME/ndk/${V8_NDK_VERSION}" >> "$GITHUB_ENV"
 
       - name: Install Rust
