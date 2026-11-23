@@ -100,6 +100,12 @@ jobs:
         with:
           node-version: 24
 
+      - name: Installer le compilateur TypeScript (outils CI)
+        shell: pwsh
+        run: |
+          npm install --prefix .ci-tools/typescript --no-audit --no-fund typescript@5.9.3
+          if (-not (Test-Path .ci-tools/typescript/node_modules/.bin/tsc.cmd)) { throw "tsc.cmd absent" }
+
       - name: Install Java
         uses: actions/setup-java@v4
         with:
