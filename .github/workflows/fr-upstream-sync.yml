@@ -1,0 +1,81 @@
+name: Operit 2 Français – Synchro officielle
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"   # chaque lundi 03:00 UTC
+  workflow_dispatch:
+    inputs:
+      build:
+        description: "Compiler l'APK après la synchro"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    outputs:
+      changed: ${{ steps.merge.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fr
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Récupérer le dépôt officiel
+        run: |
+          git config user.name "operit2-fr-bot"
+          git config user.email "operit2-fr-bot@users.noreply.github.com"
+          git remote add officiel https://github.com/AAswordman/Operit2.git
+          git fetch officiel main
+          git push origin officiel/main:refs/heads/upstream --force
+
+      - name: Fusionner dans fr (nos fichiers fr/ ne sont jamais touchés)
+        id: merge
+        run: |
+          before=$(git rev-parse HEAD)
+          git tag -f "avant-synchro-$(date +%Y%m%d)" HEAD
+          if ! git merge --no-edit officiel/main; then
+            echo "CONFLIT" > conflit.txt
+            git merge --abort
+          fi
+          if [ "$(git rev-parse HEAD)" != "$before" ]; then echo "changed=true" >> $GITHUB_OUTPUT; else echo "changed=false" >> $GITHUB_OUTPUT; fi
+
+      - name: Vérifier correctifs et traductions sur le nouveau code
+        id: check
+        run: |
+          set +e
+          cp -r . /tmp/essai && cd /tmp/essai
+          python3 fr/scripts/apply_overlay.py > /tmp/overlay.txt 2>&1; echo "overlay=$?" >> $GITHUB_OUTPUT
+          python3 fr/scripts/check_translations.py > /tmp/trad.txt 2>&1
+          cp fr/reports/traduction.md /tmp/traduction.md
+          grep -q "Manquantes (affichées en anglais) : 0" /tmp/traduction.md; echo "missing=$?" >> $GITHUB_OUTPUT
+
+      - name: Pousser la synchro (si tout s'applique)
+        if: hashFiles('conflit.txt') == '' && steps.check.outputs.overlay == '0'
+        run: git push origin fr --tags --force-with-lease=fr
+
+      - name: Ouvrir un ticket si action nécessaire
+        if: hashFiles('conflit.txt') != '' || steps.check.outputs.overlay != '0' || steps.check.outputs.missing != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = [
+              fs.existsSync('conflit.txt') ? '**Conflit de fusion avec l\'officiel : synchro non poussée.**' : '',
+              '### Correctifs\n```\n' + fs.readFileSync('/tmp/overlay.txt','utf8') + '\n```',
+              fs.readFileSync('/tmp/traduction.md','utf8')
+            ].join('\n\n');
+            await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo,
+              title: `Synchro officielle ${new Date().toISOString().slice(0,10)} : action nécessaire`, body });
+
+  build:
+    needs: sync
+    if: needs.sync.outputs.changed == 'true' && (github.event_name == 'schedule' || inputs.build)
+    uses: ./.github/workflows/fr-android-build.yml
+    secrets: inherit

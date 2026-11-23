@@ -1,0 +1,88 @@
+[
+  {
+    "id": "identity-appid",
+    "file": "apps/flutter/app/android/app/build.gradle.kts",
+    "find": "applicationId = if (operitExternalRuntime) \"app.operit.module\" else \"app.operit\"",
+    "replace": "applicationId = if (operitExternalRuntime) \"app.operit.fr.module\" else \"app.operit.fr\""
+  },
+  {
+    "id": "identity-label",
+    "file": "apps/flutter/app/android/app/build.gradle.kts",
+    "find": "manifestPlaceholders[\"operitAppLabel\"] = if (operitExternalRuntime) \"Operit2 (Module)\" else \"Operit2\"",
+    "replace": "manifestPlaceholders[\"operitAppLabel\"] = if (operitExternalRuntime) \"Operit 2 Français (Module)\" else \"Operit 2 Français\""
+  },
+  {
+    "id": "identity-shortcut",
+    "file": "apps/flutter/app/android/app/src/main/res/xml/shortcuts.xml",
+    "find": "android:targetPackage=\"app.operit\"",
+    "replace": "android:targetPackage=\"app.operit.fr\""
+  },
+  {
+    "id": "manifest-rescue-label",
+    "file": "apps/flutter/app/android/app/src/main/AndroidManifest.xml",
+    "find": "android:label=\"Operit2 数据救援\"",
+    "replace": "android:label=\"Operit 2 Français – Récupération\""
+  },
+  {
+    "id": "manifest-notif-label",
+    "file": "apps/flutter/app/android/app/src/main/AndroidManifest.xml",
+    "find": "android:label=\"Operit notification access\"",
+    "replace": "android:label=\"Operit 2 Français – Accès aux notifications\""
+  },
+  {
+    "id": "locale-theme",
+    "file": "apps/flutter/app/lib/ui/theme/OperitTheme.dart",
+    "all": true,
+    "find": "supportedLocales: AppLocalizations.supportedLocales,",
+    "replace": "supportedLocales: const <Locale>[Locale('fr')],"
+  },
+  {
+    "id": "locale-desktop",
+    "file": "apps/flutter/app/lib/ui/window/DesktopWidgetWindowApp.dart",
+    "find": "supportedLocales: AppLocalizations.supportedLocales,",
+    "replace": "supportedLocales: const <Locale>[Locale('fr')],"
+  },
+  {
+    "id": "locale-floating",
+    "file": "apps/flutter/app/lib/ui/window/FloatingWindowApp.dart",
+    "find": "supportedLocales: AppLocalizations.supportedLocales,",
+    "replace": "supportedLocales: const <Locale>[Locale('fr')],"
+  },
+  {
+    "id": "locale-work",
+    "file": "apps/flutter/app/lib/core/application/WorkActivityPresentationService.dart",
+    "all": true,
+    "find": "AppLocalizations.supportedLocales,",
+    "replace": "const <Locale>[Locale('fr')],"
+  },
+  {
+    "id": "locale-work-2",
+    "file": "apps/flutter/app/lib/core/application/WorkActivityPresentationService.dart",
+    "find": "basicLocaleListResolution(locales, AppLocalizations.supportedLocales)",
+    "replace": "basicLocaleListResolution(locales, const <Locale>[Locale('fr')])"
+  },
+  {
+    "id": "locale-notif",
+    "file": "apps/flutter/app/lib/core/notifications/AppNotificationService.dart",
+    "find": "AppLocalizations.supportedLocales,",
+    "replace": "const <Locale>[Locale('fr')],"
+  },
+  {
+    "id": "plugins-lang",
+    "file": "apps/flutter/app/lib/ui/features/packages/screens/ToolPkgUiLauncherScreen.dart",
+    "find": "    return tag.isEmpty ? 'en' : tag;",
+    "replace": "    if (tag.isEmpty || tag.toLowerCase().startsWith('fr')) return 'en';\n    return tag;"
+  },
+  {
+    "id": "plugins-display",
+    "file": "apps/flutter/app/lib/ui/features/packages/utils/PackageDisplayUtils.dart",
+    "find": "String _localizedTextFromMap(Map<Object?, Object?> values) {\n  final zh = values['zh'];",
+    "replace": "String _localizedTextFromMap(Map<Object?, Object?> values) {\n  for (final key in const ['fr', 'en']) {\n    final preferred = values[key];\n    if (preferred is String && preferred.trim().isNotEmpty) return preferred;\n  }\n  final zh = values['zh'];"
+  },
+  {
+    "id": "tool-labels",
+    "file": "apps/flutter/app/lib/ui/features/chat/components/part/ToolDisplayComponents.dart",
+    "find": "      labels[locale.languageCode] ??\n      labels['default'] ??\n      labels['en'] ??",
+    "replace": "      labels[locale.languageCode] ??\n      labels['en'] ??\n      labels['default'] ??"
+  }
+]

@@ -1,0 +1,232 @@
+name: Operit 2 Français – Build APK
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: fr
+
+      - name: Install Android runtime build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bison \
+            build-essential \
+            bzip2 \
+            ca-certificates \
+            curl \
+            diffutils \
+            flex \
+            gawk \
+            gzip \
+            patch \
+            pkg-config \
+            tar \
+            unzip \
+            xz-utils
+
+      - name: Fetch Android runtime sources
+        shell: pwsh
+        run: pwsh -NoProfile -File tools/android-runtime/fetch_sources.ps1
+
+      - name: Fetch Android NDK
+        run: bash tools/android-runtime/fetch_ndk_wsl.sh
+
+      - name: Build Android terminal runtime
+        run: |
+          export ANDROID_NDK_HOME="$HOME/.cache/operit-android-runtime/android-ndk-r29-beta4"
+          bash tools/android-runtime/build_android_tools_wsl.sh
+          bash tools/android-runtime/build_alpine_rootfs_wsl.sh
+
+      - name: Upload Android terminal runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: operit2-android-runtime-${{ github.sha }}
+          path: |
+            apps/flutter/app/android/app/src/main/jniLibs/arm64-v8a/libbash.so
+            apps/flutter/app/android/app/src/main/jniLibs/arm64-v8a/liboperit_busybox.so
+            apps/flutter/app/android/app/src/main/jniLibs/arm64-v8a/liboperit_loader.so
+            apps/flutter/app/android/app/src/main/jniLibs/arm64-v8a/liboperit_proot.so
+            apps/flutter/app/android/app/src/main/assets/android-runtime/arm64-v8a/rootfs.tar.gz.bin
+            apps/flutter/app/android/app/src/main/assets/android-runtime/arm64-v8a/rootfs.tar.gz.bin.sha256
+          if-no-files-found: error
+          retention-days: 1
+
+  build-android:
+    needs: build-android-runtime
+    runs-on: windows-2025
+    timeout-minutes: 180
+    env:
+      PYTHONUTF8: "1"
+      RUSTFLAGS: -Awarnings
+      RUST_TOOLCHAIN_VERSION: 1.95.0
+      FVM_VERSION: 4.3.0
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: fr
+
+      - name: Download Android terminal runtime
+        uses: actions/download-artifact@v4
+        with:
+          name: operit2-android-runtime-${{ github.sha }}
+          path: apps/flutter/app/android/app/src/main
+
+      - name: Install bootstrap Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: 3.11.5
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install FVM
+        shell: pwsh
+        run: |
+          dart pub global activate fvm $env:FVM_VERSION
+          "$env:APPDATA\Pub\Cache\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Install project Flutter SDK
+        working-directory: apps/flutter/app
+        shell: pwsh
+        run: fvm install --skip-pub-get
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN_VERSION }}
+          targets: aarch64-linux-android
+
+      - name: Prepare Android bindgen libclang
+        shell: pwsh
+        run: |
+          $version = "21.1.8"
+          $packageName = "libclang.runtime.win-x64.$version"
+          $toolsDir = "target/operit-build-tools"
+          $packageDir = Join-Path $toolsDir $packageName
+          $archive = Join-Path $toolsDir "$packageName.nupkg"
+          New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
+          Invoke-WebRequest -Uri "https://www.nuget.org/api/v2/package/libclang.runtime.win-x64/$version" -OutFile $archive
+          Expand-Archive -Path $archive -DestinationPath $packageDir -Force
+          $libclang = Join-Path $packageDir "runtimes/win-x64/native/libclang.dll"
+          if (-not (Test-Path -LiteralPath $libclang)) {
+            throw "Android bindgen libclang was not prepared at $libclang"
+          }
+
+      - name: Restore Android signing material
+        shell: pwsh
+        env:
+          ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+        run: |
+          $required = @(
+            "ANDROID_RELEASE_KEYSTORE_BASE64",
+            "ANDROID_RELEASE_STORE_PASSWORD",
+            "ANDROID_RELEASE_KEY_ALIAS",
+            "ANDROID_RELEASE_KEY_PASSWORD"
+          )
+          $missing = $required | Where-Object { [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_)) }
+          if ($missing.Count -gt 0) {
+            throw "Missing required GitHub Actions secrets: $($missing -join ', ')"
+          }
+          $secretsDir = "tools/release/secrets"
+          New-Item -ItemType Directory -Force -Path $secretsDir | Out-Null
+          $keystore = Join-Path $secretsDir "operit2-release.keystore"
+          [System.IO.File]::WriteAllBytes($keystore, [System.Convert]::FromBase64String($env:ANDROID_RELEASE_KEYSTORE_BASE64))
+          @"
+          RELEASE_STORE_FILE=operit2-release.keystore
+          RELEASE_STORE_PASSWORD=$env:ANDROID_RELEASE_STORE_PASSWORD
+          RELEASE_KEY_ALIAS=$env:ANDROID_RELEASE_KEY_ALIAS
+          RELEASE_KEY_PASSWORD=$env:ANDROID_RELEASE_KEY_PASSWORD
+          "@ | Set-Content -Path (Join-Path $secretsDir "android-signing.properties") -Encoding utf8
+
+      - name: Cache source-built Android V8
+        uses: actions/cache@v4
+        with:
+          path: tools/release/work/android-v8
+          key: ${{ runner.os }}-${{ runner.arch }}-android-v8-${{ hashFiles('tools/build_scripts/prepare_android_v8.py', 'apps/flutter/native/operit-flutter-bridge/Cargo.lock') }}
+
+      - name: Appliquer l'édition française
+        shell: pwsh
+        run: |
+          python fr/scripts/apply_overlay.py
+          if ($LASTEXITCODE -ne 0) { throw "Un correctif français ne s'applique plus : voir le journal" }
+          python fr/scripts/check_translations.py --strict
+          if ($LASTEXITCODE -ne 0) { throw "Contrôle des traductions en échec" }
+
+      - name: Générer les traductions Flutter (fr)
+        working-directory: apps/flutter/app
+        shell: pwsh
+        run: |
+          fvm flutter pub get --enforce-lockfile
+          fvm flutter gen-l10n
+          if (-not (Test-Path lib/l10n/generated/app_localizations_fr.dart)) { throw "app_localizations_fr.dart absent" }
+
+      - name: Build and package Android app
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path apps/flutter/app/pubspec.yaml -Pattern '^version:\s*(\d+\.\d+\.\d+)\+(\d+)\s*$').Matches
+          if ($version.Count -ne 1) {
+            throw "apps/flutter/app/pubspec.yaml must contain exactly one release version line"
+          }
+          python tools/build_scripts/build_flutter_android.py --build-name $version[0].Groups[1].Value --build-number $version[0].Groups[2].Value --enforce-lockfile
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: operit2-fr-android-${{ github.sha }}
+          path: tools/release/dist/operit2-app-android-arm64-v8a-*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Renommer l'APK
+        shell: pwsh
+        run: |
+          $apk = Get-ChildItem tools/release/dist/operit2-app-android-arm64-v8a-*.apk | Select-Object -First 1
+          $ver = (Select-String -Path apps/flutter/app/pubspec.yaml -Pattern '^version:\s*(\S+)').Matches[0].Groups[1].Value.Replace('+','-')
+          $run = "${{ github.run_number }}"
+          New-Item -ItemType Directory -Force -Path dist-fr | Out-Null
+          Copy-Item $apk.FullName "dist-fr/Operit2-Francais-$ver-fr$run-arm64.apk"
+          "FR_TAG=fr-v$ver-$run" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Publier la version (Release GitHub)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.FR_TAG }}
+          name: Operit 2 Français ${{ env.FR_TAG }}
+          target_commitish: fr
+          files: |
+            dist-fr/*.apk
+            fr/reports/traduction.md
+          body: |
+            Édition française d'Operit 2 (paquet app.operit.fr), ARM64.
+            Basée sur le commit officiel inclus dans la branche fr.
+            Rapport de traduction joint.

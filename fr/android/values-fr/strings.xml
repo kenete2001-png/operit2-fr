@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="operit_documents_private">Operit 2 Français – Données de l'app</string>
+    <string name="operit_documents_runtime">Operit 2 Français – Données d'exécution</string>
+    <string name="operit_documents_workspaces">Operit 2 Français – Espaces de travail</string>
+    <string name="data_rescue_shortcut_short">Récupération</string>
+    <string name="data_rescue_shortcut_long">Ouvrir la récupération des données</string>
+    <string name="operit_core_service_name">Operit Core</string>
+    <string name="operit_core_service_status">Le moteur Operit tourne en arrière-plan</string>
+    <string name="ocr_cannot_read_image">Impossible de lire l'image : %1$s</string>
+    <string name="ocr_cannot_decode_bitmap_from_uri">Impossible de décoder l'image depuis l'URI</string>
+    <string name="ocr_cannot_open_uri_stream">Impossible d'ouvrir le flux de l'URI</string>
+</resources>
