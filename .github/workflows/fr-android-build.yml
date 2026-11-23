@@ -196,6 +196,16 @@ jobs:
           fvm flutter gen-l10n
           if (-not (Test-Path lib/l10n/generated/app_localizations_fr.dart)) { throw "app_localizations_fr.dart absent" }
 
+      - name: Dépôts Maven officiels pour le CI (miroir aliyun injoignable depuis GitHub)
+        shell: pwsh
+        run: |
+          foreach ($f in @('apps/flutter/app/android/settings.gradle.kts','apps/flutter/app/android/build.gradle.kts')) {
+            $lines = Get-Content $f | Where-Object { $_ -notmatch 'maven\.aliyun\.com' }
+            Set-Content -Path $f -Value $lines -Encoding utf8NoBOM
+            Write-Host "Miroirs aliyun retirés de $f (copie CI uniquement)"
+          }
+          if (Select-String -Path apps/flutter/app/android/*.gradle.kts -Pattern 'aliyun' -Quiet) { throw "aliyun encore présent" }
+
       - name: Build and package Android app
         shell: pwsh
         run: |
