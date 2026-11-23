@@ -114,6 +114,21 @@ jobs:
           npm install -g --no-audit --no-fund pnpm@10.7.0
           pnpm --version
 
+      - name: Installer Python venv + Emscripten (outils CI, plugin character_cards)
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          if (-not (Test-Path .venv/Scripts/python.exe)) { throw ".venv absent" }
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git .ci-tools/emsdk
+          Push-Location .ci-tools/emsdk
+          ./emsdk.bat install 4.0.10
+          if ($LASTEXITCODE -ne 0) { throw "emsdk install a échoué" }
+          ./emsdk.bat activate 4.0.10
+          if ($LASTEXITCODE -ne 0) { throw "emsdk activate a échoué" }
+          Pop-Location
+          if (-not (Test-Path .ci-tools/emsdk/upstream/emscripten/em++.py)) { throw "em++.py absent" }
+          .venv/Scripts/python.exe .ci-tools/emsdk/upstream/emscripten/em++.py --version
+
       - name: Install Java
         uses: actions/setup-java@v4
         with:
