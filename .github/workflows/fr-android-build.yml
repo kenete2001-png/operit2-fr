@@ -68,8 +68,82 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  build-android-v8:
+    # V8 pour Android ne se compile que depuis un hôte Linux (assertion GN
+    # « Android builds are only supported on Linux ») : on le construit ici avec
+    # le script officiel puis on le transmet au job Windows (copie CI uniquement).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    env:
+      RUST_TOOLCHAIN_VERSION: 1.95.0
+      V8_NDK_VERSION: 27.3.13750724
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: fr
+
+      - name: Libérer de l'espace disque
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/.ghcup /usr/share/swift /opt/hostedtoolcache/CodeQL || true
+          df -h /
+
+      - name: Installer LLVM 21 (libclang + lld)
+        run: |
+          wget -q https://apt.llvm.org/llvm.sh
+          sudo bash llvm.sh 21
+          sudo apt-get install -y libclang-21-dev lld-21
+          lib=$(ls /usr/lib/llvm-21/lib/libclang-21.so.21* /usr/lib/llvm-21/lib/libclang.so.21* 2>/dev/null | head -n1)
+          test -n "$lib"
+          sudo mkdir -p /usr/lib/llvm21/lib
+          sudo ln -sf "$lib" /usr/lib/llvm21/lib/libclang.so.21
+          ls -l /usr/lib/llvm21/lib /usr/lib/llvm-21/bin/ld.lld
+
+      - name: Installer le NDK épinglé
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;${V8_NDK_VERSION}" > /dev/null
+          echo "OPERIT_ANDROID_V8_NDK=$ANDROID_HOME/ndk/${V8_NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN_VERSION }}
+          targets: aarch64-linux-android
+
+      - name: Cache V8 Android (Linux)
+        uses: actions/cache@v4
+        with:
+          path: tools/release/work/android-v8/*/aarch64-linux-android
+          key: linux-fr-android-v8-${{ env.V8_NDK_VERSION }}-${{ hashFiles('tools/build_scripts/prepare_android_v8.py', 'apps/flutter/native/operit-flutter-bridge/Cargo.lock') }}
+
+      - name: Compiler V8 pour Android arm64
+        run: |
+          python3 tools/build_scripts/prepare_android_v8.py --target aarch64-linux-android --env-file "$RUNNER_TEMP/v8.env"
+          cat "$RUNNER_TEMP/v8.env"
+          mkdir -p v8-out
+          echo "V8 Android arm64 construit sous Linux" > v8-out/LISEZMOI.txt
+          for d in tools/release/work/android-v8/*/aarch64-linux-android; do
+            v=$(basename "$(dirname "$d")")
+            mkdir -p "v8-out/$v"
+            cp -r "$d" "v8-out/$v/"
+          done
+          find v8-out -type f -exec ls -l {} \;
+
+      - name: Upload V8 Android
+        uses: actions/upload-artifact@v4
+        with:
+          name: operit2-android-v8-${{ github.sha }}
+          path: v8-out
+          if-no-files-found: error
+          retention-days: 3
+
   build-android:
-    needs: build-android-runtime
+    needs: [build-android-runtime, build-android-v8]
     runs-on: windows-2025
     timeout-minutes: 180
     env:
@@ -202,6 +276,23 @@ jobs:
         with:
           path: tools/release/work/android-v8
           key: ${{ runner.os }}-${{ runner.arch }}-android-v8-${{ hashFiles('tools/build_scripts/prepare_android_v8.py', 'apps/flutter/native/operit-flutter-bridge/Cargo.lock') }}
+
+      - name: Récupérer V8 Android construit sous Linux
+        uses: actions/download-artifact@v4
+        with:
+          name: operit2-android-v8-${{ github.sha }}
+          path: tools/release/work/android-v8
+
+      - name: Épingler le NDK de V8 (même version que le job Linux)
+        shell: pwsh
+        run: |
+          $ndk = "27.3.13750724"
+          $sdkm = Join-Path $env:ANDROID_HOME "cmdline-tools/latest/bin/sdkmanager.bat"
+          "y`ny`ny`n" | & $sdkm "ndk;$ndk" | Out-Null
+          $dir = Join-Path $env:ANDROID_HOME "ndk/$ndk"
+          if (-not (Test-Path $dir)) { throw "NDK $ndk absent" }
+          "OPERIT_ANDROID_V8_NDK=$dir" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Get-ChildItem -Recurse tools/release/work/android-v8 | Select-Object FullName, Length
 
       - name: Appliquer l'édition française
         shell: pwsh
