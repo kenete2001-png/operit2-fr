@@ -30,44 +30,6 @@
     "replace": "android:label=\"Operit 2 Français – Accès aux notifications\""
   },
   {
-    "id": "locale-theme",
-    "file": "apps/flutter/app/lib/ui/theme/OperitTheme.dart",
-    "all": true,
-    "find": "supportedLocales: AppLocalizations.supportedLocales,",
-    "replace": "supportedLocales: const <Locale>[Locale('fr')],"
-  },
-  {
-    "id": "locale-desktop",
-    "file": "apps/flutter/app/lib/ui/window/DesktopWidgetWindowApp.dart",
-    "find": "supportedLocales: AppLocalizations.supportedLocales,",
-    "replace": "supportedLocales: const <Locale>[Locale('fr')],"
-  },
-  {
-    "id": "locale-floating",
-    "file": "apps/flutter/app/lib/ui/window/FloatingWindowApp.dart",
-    "find": "supportedLocales: AppLocalizations.supportedLocales,",
-    "replace": "supportedLocales: const <Locale>[Locale('fr')],"
-  },
-  {
-    "id": "locale-work",
-    "file": "apps/flutter/app/lib/core/application/WorkActivityPresentationService.dart",
-    "all": true,
-    "find": "AppLocalizations.supportedLocales,",
-    "replace": "const <Locale>[Locale('fr')],"
-  },
-  {
-    "id": "locale-work-2",
-    "file": "apps/flutter/app/lib/core/application/WorkActivityPresentationService.dart",
-    "find": "basicLocaleListResolution(locales, AppLocalizations.supportedLocales)",
-    "replace": "basicLocaleListResolution(locales, const <Locale>[Locale('fr')])"
-  },
-  {
-    "id": "locale-notif",
-    "file": "apps/flutter/app/lib/core/notifications/AppNotificationService.dart",
-    "find": "AppLocalizations.supportedLocales,",
-    "replace": "const <Locale>[Locale('fr')],"
-  },
-  {
     "id": "plugins-lang",
     "file": "apps/flutter/app/lib/ui/features/packages/screens/ToolPkgUiLauncherScreen.dart",
     "find": "    return tag.isEmpty ? 'en' : tag;",
@@ -84,5 +46,17 @@
     "file": "apps/flutter/app/lib/ui/features/chat/components/part/ToolDisplayComponents.dart",
     "find": "      labels[locale.languageCode] ??\n      labels['default'] ??\n      labels['en'] ??",
     "replace": "      labels[locale.languageCode] ??\n      labels['en'] ??\n      labels['default'] ??"
+  },
+  {
+    "id": "langue-defaut-fr",
+    "file": "apps/flutter/app/lib/data/preferences/AppLanguage.dart",
+    "find": "    if (value is! String || value.isEmpty || value == 'system') {\n      return system;\n    }",
+    "replace": "    // Édition française : sans choix enregistré, l'app démarre en français.\n    if (value is! String || value.isEmpty) {\n      return french;\n    }\n    if (value == 'system') {\n      return system;\n    }"
+  },
+  {
+    "id": "langue-initiale-fr",
+    "file": "apps/flutter/app/lib/data/preferences/UserPreferencesManager.dart",
+    "find": "ValueNotifier<AppLanguage>(AppLanguage.system);",
+    "replace": "ValueNotifier<AppLanguage>(AppLanguage.french);"
   }
 ]
