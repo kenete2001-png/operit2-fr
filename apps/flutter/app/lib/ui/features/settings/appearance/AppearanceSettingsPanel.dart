@@ -14,6 +14,7 @@ import 'package:operit_ui/operit_ui.dart'
         ThemeAssetPurpose,
         ThemeAssetStage,
         ThemeGlassSurfaceGroup,
+        ThemePreferenceDefaults,
         themeImageFittedSize,
         themeImageMaxDimension,
         themeImageMaxPixels;
@@ -29,6 +30,7 @@ import '../../../common/components/OperitDialog.dart';
 import '../../../common/layout/ApplicationZoom.dart';
 import '../../../theme/OperitGlassSurface.dart';
 import '../../../theme/OperitTheme.dart';
+import '../../../theme/ThemeColorPresets.dart';
 import '../../../theme/OperitThemeAssets.dart';
 import '../../../theme/ThemeVideoAssetLoader.dart';
 import '../components/SettingsAssetTile.dart';
@@ -205,88 +207,16 @@ class _AppearanceThemeEditor extends StatelessWidget {
           ],
         ),
         _SectionCard(
-          title: l10n.settingsAppearanceTextSection,
+          title: l10n.settingsAppearanceFontsSection,
           icon: Icons.text_fields_outlined,
           children: <Widget>[
-            ...<Widget>[
-              _AppearanceFieldBlock(
-                label: l10n.settingsAppearanceFontFamily,
-                badge: _fontFamilyLabel(l10n, snapshot),
-                child: _FontFamilySelector(
-                  value: _fontFamilyPresetFromSnapshot(snapshot),
-                  hasSelection:
-                      snapshot.fontType ==
-                      UserPreferencesManager.FONT_TYPE_SYSTEM,
-                  onChanged: (value) {
-                    unawaited(
-                      themeController.saveThemeSettings(
-                        fontType: UserPreferencesManager.FONT_TYPE_SYSTEM,
-                        systemFontName: _systemFontNameFromPreset(value),
-                        useCustomFont: false,
-                        customFontPath: '',
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 10),
-              SettingsAssetTile(
-                icon: Icons.font_download_outlined,
-                title: l10n.settingsAppearanceDeviceFonts,
-                subtitle:
-                    snapshot.fontType == UserPreferencesManager.FONT_TYPE_DEVICE
-                    ? snapshot.systemFontName!
-                    : l10n.settingsAppearanceChooseDeviceFont,
-                actions: [
-                  FilledButton.tonalIcon(
-                    style: SettingsControlStyles.sectionTextButton(),
-                    icon: const Icon(Icons.text_fields, size: 16),
-                    label: Text(l10n.settingsAppearanceChooseDeviceFont),
-                    onPressed: () => _pickDeviceFont(
-                      context,
-                      themeController,
-                      snapshot.systemFontName,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              SettingsAssetTile(
-                icon: Icons.font_download_outlined,
-                title: l10n.settingsAppearanceCustomFont,
-                subtitle: _customFontLabel(
-                  l10n,
-                  hasCustomFont ? snapshot.customFontPath : null,
-                ),
-                actions: <Widget>[
-                  FilledButton.tonalIcon(
-                    style: SettingsControlStyles.sectionTextButton(),
-                    onPressed: () {
-                      unawaited(_pickCustomFont(context, themeController));
-                    },
-                    icon: const Icon(Icons.folder_open_outlined, size: 16),
-                    label: Text(l10n.settingsAppearanceChooseCustomFont),
-                  ),
-                  if (hasCustomFont)
-                    SettingsEntityIconButton(
-                      tooltip: l10n.settingsAppearanceClearCustomFont,
-                      icon: Icons.close,
-                      onPressed: () {
-                        unawaited(
-                          themeController.saveThemeSettings(
-                            useCustomFont: false,
-                            fontType: UserPreferencesManager.FONT_TYPE_SYSTEM,
-                            systemFontName:
-                                UserPreferencesManager.SYSTEM_FONT_DEFAULT,
-                            customFontPath: '',
-                          ),
-                        );
-                      },
-                    ),
-                ],
-              ),
-              const SizedBox(height: 8),
-            ],
+            _FontSlotSection(snapshot: snapshot, controller: themeController),
+          ],
+        ),
+        _SectionCard(
+          title: l10n.settingsAppearanceTextSection,
+          icon: Icons.tune_outlined,
+          children: <Widget>[
             SettingsSliderRow(
               icon: Icons.zoom_in_outlined,
               label: l10n.settingsAppearanceInterfaceScale,
@@ -322,12 +252,9 @@ class _AppearanceThemeEditor extends StatelessWidget {
           ],
         ),
         _SectionCard(
-          title: l10n.settingsAppearanceLanguageSection,
-          icon: Icons.language_outlined,
-          action: SettingsInfoBadge(label: l10n.localeName),
+          title: l10n.settingsAppearanceResetTheme,
+          icon: Icons.restart_alt,
           children: <Widget>[
-            _BodyText(l10n.settingsAppearanceLanguageDescription),
-            const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerRight,
               child: OutlinedButton.icon(
@@ -685,51 +612,23 @@ class _AppearanceThemeEditor extends StatelessWidget {
           ],
         ),
         _SectionCard(
-          title: l10n.settingsAppearanceBubbleFontSection,
+          title: l10n.settingsAppearanceChatBodyFontSection,
           icon: Icons.font_download_outlined,
           children: <Widget>[
             SettingsAssetTile(
-              icon: Icons.person_outline,
-              title: l10n.settingsAppearanceUserBubbleFont,
-              subtitle: _bubbleFontLabel(l10n, snapshot, isUser: true),
+              icon: Icons.font_download_outlined,
+              title: l10n.settingsAppearanceBubbleFontSection,
+              subtitle: _chatBodyFontLabel(l10n, snapshot),
               actions: <Widget>[
                 FilledButton.tonalIcon(
                   style: SettingsControlStyles.sectionTextButton(),
                   onPressed: () {
                     unawaited(
-                      _showBubbleFontDialog(
-                        context,
-                        themeController,
-                        snapshot,
-                        isUser: true,
-                      ),
+                      _showChatBodyFontDialog(context, themeController, snapshot),
                     );
                   },
                   icon: const Icon(Icons.tune_outlined, size: 16),
-                  label: Text(l10n.settingsAppearanceAdjustUserBubbleFont),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            SettingsAssetTile(
-              icon: Icons.smart_toy_outlined,
-              title: l10n.settingsAppearanceAiBubbleFont,
-              subtitle: _bubbleFontLabel(l10n, snapshot, isUser: false),
-              actions: <Widget>[
-                FilledButton.tonalIcon(
-                  style: SettingsControlStyles.sectionTextButton(),
-                  onPressed: () {
-                    unawaited(
-                      _showBubbleFontDialog(
-                        context,
-                        themeController,
-                        snapshot,
-                        isUser: false,
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.tune_outlined, size: 16),
-                  label: Text(l10n.settingsAppearanceAdjustAiBubbleFont),
+                  label: Text(l10n.settingsAppearanceChatBodyAdjust),
                 ),
               ],
             ),
@@ -1894,50 +1793,201 @@ void _showFontImportError(BuildContext context, Object error) {
   );
 }
 
-/// Shows font controls for the selected message bubble side.
-Future<void> _showBubbleFontDialog(
+/// Mutable per-side bubble font selection edited by the chat body dialog.
+class _SideFontValues {
+  _SideFontValues({
+    required this.active,
+    required this.fontType,
+    required this.systemFontName,
+    required this.customFontPath,
+  });
+
+  bool active;
+  String fontType;
+  String? systemFontName;
+  String? customFontPath;
+}
+
+/// Summarizes the per-side bubble fonts for the chat body settings tile.
+String _chatBodyFontLabel(
+  AppLocalizations l10n,
+  ThemePreferenceSnapshot snapshot,
+) {
+  final userActive = snapshot.bubbleUserUseCustomFont;
+  final aiActive = snapshot.bubbleAiUseCustomFont;
+  if (!userActive && !aiActive) {
+    return l10n.settingsAppearanceChatBodyFontFollow;
+  }
+  final parts = <String>[
+    if (userActive)
+      '${l10n.settingsAppearanceUserBubbleFont}: '
+          '${_bubbleFontLabel(l10n, snapshot, isUser: true)}',
+    if (aiActive)
+      '${l10n.settingsAppearanceAiBubbleFont}: '
+          '${_bubbleFontLabel(l10n, snapshot, isUser: false)}',
+  ];
+  return parts.join(' · ');
+}
+
+/// Shows one merged editor for the user and AI bubble fonts. Both sides are
+/// edited together unless the split toggle is on, while the underlying
+/// per-side preferences stay unchanged for compatibility.
+Future<void> _showChatBodyFontDialog(
   BuildContext context,
   OperitThemeController themeController,
-  ThemePreferenceSnapshot snapshot, {
-  required bool isUser,
-}) async {
+  ThemePreferenceSnapshot snapshot,
+) async {
   final l10n = AppLocalizations.of(context)!;
-  var useCustomFont = isUser
-      ? snapshot.bubbleUserUseCustomFont
-      : snapshot.bubbleAiUseCustomFont;
-  var fontType = isUser
-      ? snapshot.bubbleUserFontType
-      : snapshot.bubbleAiFontType;
-  var systemFontName = isUser
-      ? snapshot.bubbleUserSystemFontName
-      : snapshot.bubbleAiSystemFontName;
-  var customFontPath = isUser
-      ? snapshot.bubbleUserCustomFontPath
-      : snapshot.bubbleAiCustomFontPath;
+  final user = _SideFontValues(
+    active: snapshot.bubbleUserUseCustomFont,
+    fontType: snapshot.bubbleUserFontType,
+    systemFontName: snapshot.bubbleUserSystemFontName,
+    customFontPath: snapshot.bubbleUserCustomFontPath,
+  );
+  final ai = _SideFontValues(
+    active: snapshot.bubbleAiUseCustomFont,
+    fontType: snapshot.bubbleAiFontType,
+    systemFontName: snapshot.bubbleAiSystemFontName,
+    customFontPath: snapshot.bubbleAiCustomFontPath,
+  );
+  var anyActive = user.active || ai.active;
+  var splitSides = !user.active == !ai.active
+      ? user.active && ai.active &&
+            (user.fontType != ai.fontType ||
+                user.systemFontName != ai.systemFontName ||
+                user.customFontPath != ai.customFontPath)
+      : true;
 
   await showDialog<void>(
     context: context,
     builder: (dialogContext) {
       return StatefulBuilder(
         builder: (context, setDialogState) {
-          Future<void> pickFontFile() async {
+          Future<void> pickFontFile(_SideFontValues values) async {
             try {
               final imported = await _selectThemeFont();
               if (imported == null || !context.mounted) return;
               setDialogState(() {
-                useCustomFont = true;
-                fontType = UserPreferencesManager.FONT_TYPE_FILE;
-                customFontPath = imported.storagePath;
+                values
+                  ..active = true
+                  ..fontType = UserPreferencesManager.FONT_TYPE_FILE
+                  ..customFontPath = imported.storagePath;
               });
             } catch (error) {
               _showFontImportError(context, error);
             }
           }
 
+          Future<void> pickDeviceFont(_SideFontValues values) async {
+            try {
+              final selected = await showDeviceFontPicker(
+                context,
+                selectedName: values.systemFontName,
+              );
+              if (selected == null || !context.mounted) return;
+              final imported = await ThemeAssetStore()
+                  .importFontBytes(
+                    bytes: selected.bytes,
+                    fileName: 'device-font.ttf',
+                  );
+              if (!context.mounted) return;
+              setDialogState(() {
+                values
+                  ..active = true
+                  ..fontType = UserPreferencesManager.FONT_TYPE_DEVICE
+                  ..systemFontName = selected.name
+                  ..customFontPath = imported.storagePath;
+              });
+            } catch (error) {
+              _showFontImportError(context, error);
+            }
+          }
+
+          List<Widget> fontControls(_SideFontValues values) => <Widget>[
+            _AppearanceFieldBlock(
+              label: l10n.settingsAppearanceFontFamily,
+              badge: values.fontType == UserPreferencesManager.FONT_TYPE_DEVICE
+                  ? values.systemFontName!
+                  : values.fontType == UserPreferencesManager.FONT_TYPE_FILE
+                  ? l10n.settingsAppearanceFontCustom
+                  : _fontFamilyPresetLabel(
+                      l10n,
+                      _fontFamilyPresetFromSystemName(values.systemFontName),
+                    ),
+              child: _FontFamilySelector(
+                value: _fontFamilyPresetFromSystemName(values.systemFontName),
+                hasSelection:
+                    values.fontType == UserPreferencesManager.FONT_TYPE_SYSTEM,
+                onChanged: (value) {
+                  setDialogState(() {
+                    values
+                      ..active = true
+                      ..fontType = UserPreferencesManager.FONT_TYPE_SYSTEM
+                      ..systemFontName = _systemFontNameFromPreset(value);
+                  });
+                },
+              ),
+            ),
+            const SizedBox(height: 10),
+            SettingsAssetTile(
+              icon: Icons.text_fields,
+              title: l10n.settingsAppearanceDeviceFonts,
+              subtitle:
+                  values.fontType == UserPreferencesManager.FONT_TYPE_DEVICE
+                  ? values.systemFontName!
+                  : l10n.settingsAppearanceChooseDeviceFont,
+              actions: [
+                FilledButton.tonalIcon(
+                  style: SettingsControlStyles.sectionTextButton(),
+                  icon: const Icon(Icons.text_fields, size: 16),
+                  label: Text(l10n.settingsAppearanceChooseDeviceFont),
+                  onPressed: () {
+                    unawaited(pickDeviceFont(values));
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            SettingsAssetTile(
+              icon: Icons.folder_open_outlined,
+              title: l10n.settingsAppearanceCustomFont,
+              subtitle: _customFontLabel(
+                l10n,
+                values.fontType == UserPreferencesManager.FONT_TYPE_FILE
+                    ? values.customFontPath
+                    : null,
+              ),
+              actions: <Widget>[
+                FilledButton.tonalIcon(
+                  style: SettingsControlStyles.sectionTextButton(),
+                  onPressed: () {
+                    unawaited(pickFontFile(values));
+                  },
+                  icon: const Icon(Icons.file_upload_outlined, size: 16),
+                  label: Text(l10n.settingsAppearanceChooseCustomFont),
+                ),
+                if (values.fontType == UserPreferencesManager.FONT_TYPE_FILE &&
+                    values.customFontPath != null &&
+                    values.customFontPath!.isNotEmpty)
+                  SettingsEntityIconButton(
+                    tooltip: l10n.settingsAppearanceClearCustomFont,
+                    icon: Icons.close,
+                    onPressed: () {
+                      setDialogState(() {
+                        values
+                          ..customFontPath = ''
+                          ..fontType = UserPreferencesManager.FONT_TYPE_SYSTEM
+                          ..systemFontName =
+                              UserPreferencesManager.SYSTEM_FONT_DEFAULT;
+                      });
+                    },
+                  ),
+              ],
+            ),
+          ];
+
           return OperitDialogScaffold(
-            title: isUser
-                ? l10n.settingsAppearanceAdjustUserBubbleFont
-                : l10n.settingsAppearanceAdjustAiBubbleFont,
+            title: l10n.settingsAppearanceChatBodyFontSection,
             maxWidth: 460,
             showCloseButton: true,
             actions: <Widget>[
@@ -1947,20 +1997,26 @@ Future<void> _showBubbleFontDialog(
               ),
               FilledButton(
                 onPressed: () {
+                  final shareWithAi = !splitSides;
                   unawaited(
-                    isUser
-                        ? themeController.saveThemeSettings(
-                            bubbleUserUseCustomFont: useCustomFont,
-                            bubbleUserFontType: fontType,
-                            bubbleUserSystemFontName: systemFontName,
-                            bubbleUserCustomFontPath: customFontPath,
-                          )
-                        : themeController.saveThemeSettings(
-                            bubbleAiUseCustomFont: useCustomFont,
-                            bubbleAiFontType: fontType,
-                            bubbleAiSystemFontName: systemFontName,
-                            bubbleAiCustomFontPath: customFontPath,
-                          ),
+                    themeController.saveThemeSettings(
+                      bubbleUserUseCustomFont: anyActive && user.active,
+                      bubbleUserFontType: user.fontType,
+                      bubbleUserSystemFontName: user.systemFontName,
+                      bubbleUserCustomFontPath: user.customFontPath,
+                      bubbleAiUseCustomFont: anyActive && (shareWithAi
+                          ? user.active
+                          : ai.active),
+                      bubbleAiFontType: shareWithAi
+                          ? user.fontType
+                          : ai.fontType,
+                      bubbleAiSystemFontName: shareWithAi
+                          ? user.systemFontName
+                          : ai.systemFontName,
+                      bubbleAiCustomFontPath: shareWithAi
+                          ? user.customFontPath
+                          : ai.customFontPath,
+                    ),
                   );
                   Navigator.of(dialogContext).pop();
                 },
@@ -1974,111 +2030,76 @@ Future<void> _showBubbleFontDialog(
                 SettingsSwitchRow(
                   icon: Icons.font_download_outlined,
                   title: l10n.settingsAppearanceEnableBubbleFont,
-                  value: useCustomFont,
+                  value: anyActive,
                   onChanged: (value) {
                     setDialogState(() {
-                      useCustomFont = value;
+                      anyActive = value;
+                      if (!value) {
+                        user.active = false;
+                        ai.active = false;
+                        return;
+                      }
+                      if (user.active && ai.active) return;
+                      if (!user.active && !ai.active) {
+                        user
+                          ..active = true
+                          ..fontType = UserPreferencesManager.FONT_TYPE_SYSTEM
+                          ..systemFontName =
+                              UserPreferencesManager.SYSTEM_FONT_DEFAULT
+                          ..customFontPath = '';
+                        ai
+                          ..active = true
+                          ..fontType = user.fontType
+                          ..systemFontName = user.systemFontName
+                          ..customFontPath = user.customFontPath;
+                        return;
+                      }
+                      final source = user.active ? user : ai;
+                      final target = user.active ? ai : user;
+                      target
+                        ..active = true
+                        ..fontType = source.fontType
+                        ..systemFontName = source.systemFontName
+                        ..customFontPath = source.customFontPath;
                     });
                   },
                 ),
                 const SizedBox(height: 8),
-                _AppearanceFieldBlock(
-                  label: l10n.settingsAppearanceFontFamily,
-                  badge: fontType == UserPreferencesManager.FONT_TYPE_DEVICE
-                      ? systemFontName!
-                      : fontType == UserPreferencesManager.FONT_TYPE_FILE
-                      ? l10n.settingsAppearanceFontCustom
-                      : _fontFamilyPresetLabel(
-                          l10n,
-                          _fontFamilyPresetFromSystemName(systemFontName),
-                        ),
-                  child: _FontFamilySelector(
-                    value: _fontFamilyPresetFromSystemName(systemFontName),
-                    hasSelection:
-                        fontType == UserPreferencesManager.FONT_TYPE_SYSTEM,
+                if (anyActive) ...<Widget>[
+                  SettingsSwitchRow(
+                    icon: Icons.call_split_outlined,
+                    title: l10n.settingsAppearanceChatBodySplitSides,
+                    value: splitSides,
                     onChanged: (value) {
                       setDialogState(() {
-                        useCustomFont = true;
-                        fontType = UserPreferencesManager.FONT_TYPE_SYSTEM;
-                        systemFontName = _systemFontNameFromPreset(value);
+                        splitSides = value;
+                        if (!value) {
+                          ai
+                            ..active = user.active
+                            ..fontType = user.fontType
+                            ..systemFontName = user.systemFontName
+                            ..customFontPath = user.customFontPath;
+                        } else {
+                          ai
+                            ..active = user.active
+                            ..fontType = user.fontType
+                            ..systemFontName = user.systemFontName
+                            ..customFontPath = user.customFontPath;
+                        }
                       });
                     },
                   ),
-                ),
-                const SizedBox(height: 10),
-                SettingsAssetTile(
-                  icon: Icons.text_fields,
-                  title: l10n.settingsAppearanceDeviceFonts,
-                  subtitle: fontType == UserPreferencesManager.FONT_TYPE_DEVICE
-                      ? systemFontName!
-                      : l10n.settingsAppearanceChooseDeviceFont,
-                  actions: [
-                    FilledButton.tonalIcon(
-                      style: SettingsControlStyles.sectionTextButton(),
-                      icon: const Icon(Icons.text_fields, size: 16),
-                      label: Text(l10n.settingsAppearanceChooseDeviceFont),
-                      onPressed: () async {
-                        try {
-                          final selected = await showDeviceFontPicker(
-                            context,
-                            selectedName: systemFontName,
-                          );
-                          if (selected == null || !context.mounted) return;
-                          final imported = await ThemeAssetStore()
-                              .importFontBytes(
-                                bytes: selected.bytes,
-                                fileName: 'device-font.ttf',
-                              );
-                          if (!context.mounted) return;
-                          setDialogState(() {
-                            useCustomFont = true;
-                            fontType = UserPreferencesManager.FONT_TYPE_DEVICE;
-                            systemFontName = selected.name;
-                            customFontPath = imported.storagePath;
-                          });
-                        } catch (error) {
-                          _showFontImportError(context, error);
-                        }
-                      },
-                    ),
+                  const SizedBox(height: 8),
+                  if (!splitSides)
+                    ...fontControls(user)
+                  else ...<Widget>[
+                    _BodyText(l10n.settingsAppearanceUserBubbleFont),
+                    ...fontControls(user),
+                    const SizedBox(height: 10),
+                    _BodyText(l10n.settingsAppearanceAiBubbleFont),
+                    ...fontControls(ai),
                   ],
-                ),
-                const SizedBox(height: 10),
-                SettingsAssetTile(
-                  icon: Icons.folder_open_outlined,
-                  title: l10n.settingsAppearanceCustomFont,
-                  subtitle: _customFontLabel(
-                    l10n,
-                    fontType == UserPreferencesManager.FONT_TYPE_FILE
-                        ? customFontPath
-                        : null,
-                  ),
-                  actions: <Widget>[
-                    FilledButton.tonalIcon(
-                      style: SettingsControlStyles.sectionTextButton(),
-                      onPressed: () {
-                        unawaited(pickFontFile());
-                      },
-                      icon: const Icon(Icons.file_upload_outlined, size: 16),
-                      label: Text(l10n.settingsAppearanceChooseCustomFont),
-                    ),
-                    if (fontType == UserPreferencesManager.FONT_TYPE_FILE &&
-                        customFontPath != null &&
-                        customFontPath!.isNotEmpty)
-                      SettingsEntityIconButton(
-                        tooltip: l10n.settingsAppearanceClearCustomFont,
-                        icon: Icons.close,
-                        onPressed: () {
-                          setDialogState(() {
-                            customFontPath = '';
-                            fontType = UserPreferencesManager.FONT_TYPE_SYSTEM;
-                            systemFontName =
-                                UserPreferencesManager.SYSTEM_FONT_DEFAULT;
-                          });
-                        },
-                      ),
-                  ],
-                ),
+                ],
               ],
             ),
           );
@@ -2086,6 +2107,53 @@ Future<void> _showBubbleFontDialog(
       );
     },
   );
+}
+
+/// Picks a device font and stores it as the code font asset.
+Future<void> _pickCodeDeviceFont(
+  BuildContext context,
+  OperitThemeController themeController,
+) async {
+  try {
+    final selected = await showDeviceFontPicker(context, selectedName: null);
+    if (selected == null) return;
+    final imported = await ThemeAssetStore().importFontBytes(
+      bytes: selected.bytes,
+      fileName: 'device-font.ttf',
+    );
+    await themeController.saveThemeSettings(
+      codeFontType: UserPreferencesManager.FONT_TYPE_DEVICE,
+      codeFontSystemName: selected.name,
+      codeFontPath: imported.storagePath,
+    );
+  } catch (error) {
+    _showFontImportError(context, error);
+  }
+}
+
+/// Imports a font file and stores it as the code font asset.
+Future<void> _pickCodeCustomFont(
+  BuildContext context,
+  OperitThemeController themeController,
+) async {
+  try {
+    final imported = await _selectThemeFont();
+    if (imported == null) return;
+    await themeController.saveThemeSettings(
+      codeFontType: UserPreferencesManager.FONT_TYPE_FILE,
+      codeFontPath: imported.storagePath,
+    );
+  } catch (error) {
+    _showFontImportError(context, error);
+  }
+}
+
+/// Labels the active code font selection for the settings tile.
+String _codeFontLabel(AppLocalizations l10n, String? fontPath) {
+  if (fontPath == null || fontPath.isEmpty) {
+    return l10n.settingsAppearanceCodeFontBuiltin;
+  }
+  return l10n.settingsAppearanceFontCustom;
 }
 
 /// Imports and saves a selected image as a bubble surface asset.
@@ -2583,69 +2651,12 @@ Future<void> _showBubbleImageAdjustDialog(
   }
 }
 
-class _ThemeColorPreset {
-  const _ThemeColorPreset({
-    required this.id,
-    required this.primaryColor,
-    required this.secondaryColor,
-    required this.useCustomColors,
-  });
-
-  final String id;
-  final int? primaryColor;
-  final int? secondaryColor;
-  final bool useCustomColors;
-}
-
-const List<_ThemeColorPreset> _themeColorPresets = <_ThemeColorPreset>[
-  _ThemeColorPreset(
-    id: 'default',
-    primaryColor: null,
-    secondaryColor: null,
-    useCustomColors: false,
-  ),
-  _ThemeColorPreset(
-    id: 'sky',
-    primaryColor: 0xFF4C9EEB,
-    secondaryColor: 0xFF32B8C6,
-    useCustomColors: true,
-  ),
-  _ThemeColorPreset(
-    id: 'matcha',
-    primaryColor: 0xFF5C8D48,
-    secondaryColor: 0xFFB08B42,
-    useCustomColors: true,
-  ),
-  _ThemeColorPreset(
-    id: 'ember',
-    primaryColor: 0xFFE46F3D,
-    secondaryColor: 0xFF9C6A2F,
-    useCustomColors: true,
-  ),
-  _ThemeColorPreset(
-    id: 'rose',
-    primaryColor: 0xFFD85C7F,
-    secondaryColor: 0xFF8E6AD8,
-    useCustomColors: true,
-  ),
-];
-
 const Color _customPresetPrimaryPreviewColor = Color(0xFF2F80ED);
 const Color _customPresetSecondaryPreviewColor = Color(0xFFFFB020);
 
-String _selectedColorPresetId(ThemePreferenceSnapshot snapshot) {
-  if (!snapshot.useCustomColors) {
-    return 'default';
-  }
-  for (final preset in _themeColorPresets) {
-    if (preset.useCustomColors &&
-        preset.primaryColor == snapshot.customPrimaryColor &&
-        preset.secondaryColor == snapshot.customSecondaryColor) {
-      return preset.id;
-    }
-  }
-  return 'custom';
-}
+/// Resolves built-in presets using their existing persisted identity.
+String _selectedColorPresetId(ThemePreferenceSnapshot snapshot) =>
+    themeColorPresetForSnapshot(snapshot)?.id ?? 'custom';
 
 String _backgroundImageLabel(AppLocalizations l10n, String? imagePath) {
   if (imagePath == null || imagePath.isEmpty) {
@@ -2653,6 +2664,197 @@ String _backgroundImageLabel(AppLocalizations l10n, String? imagePath) {
   }
   final normalized = imagePath.replaceAll('\\', '/');
   return normalized.substring(normalized.lastIndexOf('/') + 1);
+}
+
+/// Selects between the body and code font slots with a pill tab strip.
+enum _FontSection { normal, code }
+
+class _FontSlotSection extends StatefulWidget {
+  const _FontSlotSection({
+    required this.snapshot,
+    required this.controller,
+  });
+
+  final ThemePreferenceSnapshot snapshot;
+  final OperitThemeController controller;
+
+  @override
+  State<_FontSlotSection> createState() => _FontSlotSectionState();
+}
+
+class _FontSlotSectionState extends State<_FontSlotSection> {
+  _FontSection _section = _FontSection.normal;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final snapshot = widget.snapshot;
+    final themeController = widget.controller;
+    final hasCustomFont =
+        snapshot.fontType == UserPreferencesManager.FONT_TYPE_FILE &&
+        snapshot.customFontPath != null &&
+        snapshot.customFontPath!.isNotEmpty;
+    final hasCodeCustomFont =
+        snapshot.codeFontType == UserPreferencesManager.FONT_TYPE_FILE &&
+        snapshot.codeFontPath != null &&
+        snapshot.codeFontPath!.isNotEmpty;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        SettingsSegmentedSelector<_FontSection>(
+          value: _section,
+          hasSelection: true,
+          onChanged: (value) {
+            setState(() => _section = value);
+          },
+          segments: <ButtonSegment<_FontSection>>[
+            ButtonSegment<_FontSection>(
+              value: _FontSection.normal,
+              label: Text(l10n.settingsAppearanceNormalFontSection),
+            ),
+            ButtonSegment<_FontSection>(
+              value: _FontSection.code,
+              label: Text(l10n.settingsAppearanceCodeFontSection),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (_section == _FontSection.normal) ...<Widget>[
+          _AppearanceFieldBlock(
+            label: l10n.settingsAppearanceFontFamily,
+            badge: _fontFamilyLabel(l10n, snapshot),
+            child: _FontFamilySelector(
+              value: _fontFamilyPresetFromSnapshot(snapshot),
+              hasSelection:
+                  snapshot.fontType == UserPreferencesManager.FONT_TYPE_SYSTEM,
+              onChanged: (value) {
+                unawaited(
+                  themeController.saveThemeSettings(
+                    fontType: UserPreferencesManager.FONT_TYPE_SYSTEM,
+                    systemFontName: _systemFontNameFromPreset(value),
+                    useCustomFont: false,
+                    customFontPath: '',
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 10),
+          SettingsAssetTile(
+            icon: Icons.font_download_outlined,
+            title: l10n.settingsAppearanceDeviceFonts,
+            subtitle:
+                snapshot.fontType == UserPreferencesManager.FONT_TYPE_DEVICE
+                ? snapshot.systemFontName!
+                : l10n.settingsAppearanceChooseDeviceFont,
+            actions: [
+              FilledButton.tonalIcon(
+                style: SettingsControlStyles.sectionTextButton(),
+                icon: const Icon(Icons.text_fields, size: 16),
+                label: Text(l10n.settingsAppearanceChooseDeviceFont),
+                onPressed: () => _pickDeviceFont(
+                  context,
+                  themeController,
+                  snapshot.systemFontName,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SettingsAssetTile(
+            icon: Icons.font_download_outlined,
+            title: l10n.settingsAppearanceCustomFont,
+            subtitle: _customFontLabel(
+              l10n,
+              hasCustomFont ? snapshot.customFontPath : null,
+            ),
+            actions: <Widget>[
+              FilledButton.tonalIcon(
+                style: SettingsControlStyles.sectionTextButton(),
+                onPressed: () {
+                  unawaited(_pickCustomFont(context, themeController));
+                },
+                icon: const Icon(Icons.folder_open_outlined, size: 16),
+                label: Text(l10n.settingsAppearanceChooseCustomFont),
+              ),
+              if (hasCustomFont)
+                SettingsEntityIconButton(
+                  tooltip: l10n.settingsAppearanceClearCustomFont,
+                  icon: Icons.close,
+                  onPressed: () {
+                    unawaited(
+                      themeController.saveThemeSettings(
+                        useCustomFont: false,
+                        fontType: UserPreferencesManager.FONT_TYPE_SYSTEM,
+                        systemFontName:
+                            UserPreferencesManager.SYSTEM_FONT_DEFAULT,
+                        customFontPath: '',
+                      ),
+                    );
+                  },
+                ),
+            ],
+          ),
+        ] else ...<Widget>[
+          _BodyText(l10n.settingsAppearanceCodeFontDescription),
+          const SizedBox(height: 4),
+          SettingsAssetTile(
+            icon: Icons.text_fields,
+            title: l10n.settingsAppearanceDeviceFonts,
+            subtitle:
+                snapshot.codeFontType ==
+                    UserPreferencesManager.FONT_TYPE_DEVICE
+                ? snapshot.codeFontSystemName!
+                : l10n.settingsAppearanceChooseDeviceFont,
+            actions: [
+              FilledButton.tonalIcon(
+                style: SettingsControlStyles.sectionTextButton(),
+                icon: const Icon(Icons.text_fields, size: 16),
+                label: Text(l10n.settingsAppearanceChooseDeviceFont),
+                onPressed: () => unawaited(
+                  _pickCodeDeviceFont(context, themeController),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SettingsAssetTile(
+            icon: Icons.folder_open_outlined,
+            title: l10n.settingsAppearanceCustomFont,
+            subtitle: _codeFontLabel(
+              l10n,
+              hasCodeCustomFont ? snapshot.codeFontPath : null,
+            ),
+            actions: <Widget>[
+              FilledButton.tonalIcon(
+                style: SettingsControlStyles.sectionTextButton(),
+                onPressed: () {
+                  unawaited(_pickCodeCustomFont(context, themeController));
+                },
+                icon: const Icon(Icons.file_upload_outlined, size: 16),
+                label: Text(l10n.settingsAppearanceChooseCustomFont),
+              ),
+              if (hasCodeCustomFont)
+                SettingsEntityIconButton(
+                  tooltip: l10n.settingsAppearanceClearCustomFont,
+                  icon: Icons.close,
+                  onPressed: () {
+                    unawaited(
+                      themeController.saveThemeSettings(
+                        codeFontType: UserPreferencesManager.FONT_TYPE_SYSTEM,
+                        codeFontSystemName: null,
+                        codeFontPath: '',
+                      ),
+                    );
+                  },
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+        ],
+      ],
+    );
+  }
 }
 
 String _customFontLabel(AppLocalizations l10n, String? fontPath) {
@@ -2720,51 +2922,74 @@ class _ThemeColorPresetSelector extends StatelessWidget {
 
   final String selectedId;
   final ThemePreferenceSnapshot snapshot;
-  final ValueChanged<_ThemeColorPreset> onChanged;
+  final ValueChanged<ThemeColorPreset> onChanged;
   final VoidCallback onCustomTap;
 
+  /// Shows generated M3 preset colors and the exact saved custom colors.
   @override
   Widget build(BuildContext context) {
+    final presets = <ThemeColorPreset>[
+      ...themeColorPresets,
+      ThemeColorPreset(
+        id: 'custom',
+        primaryColor: snapshot.customPrimaryColor,
+        secondaryColor: snapshot.customSecondaryColor,
+        useCustomColors: true,
+      ),
+    ];
     return Wrap(
       spacing: 10,
       runSpacing: 10,
       children: <Widget>[
-        for (final preset in _themeColorPresets)
+        for (final preset in presets)
           _ColorPresetTile(
             selected: selectedId == preset.id,
             label: Text(_themeColorPresetLabel(context, preset.id)),
             primaryColor: _themePresetPrimaryColor(context, preset),
             secondaryColor: _themePresetSecondaryColor(context, preset),
-            onTap: () => onChanged(preset),
+            onTap: preset.id == 'custom' ? onCustomTap : () => onChanged(preset),
           ),
-        _ColorPresetTile(
-          selected: selectedId == 'custom',
-          label: Text(_themeColorPresetLabel(context, 'custom')),
-          primaryColor: _customPresetPrimaryPreviewColor,
-          secondaryColor: _customPresetSecondaryPreviewColor,
-          onTap: onCustomTap,
-        ),
       ],
     );
   }
 }
 
-Color _themePresetPrimaryColor(BuildContext context, _ThemeColorPreset preset) {
+/// Previews the generated primary role instead of the preset's raw seed.
+Color _themePresetPrimaryColor(BuildContext context, ThemeColorPreset preset) {
+  if (preset.id != 'custom') {
+    return _themePresetScheme(context, preset).primary;
+  }
   final colorScheme = Theme.of(context).colorScheme;
   return preset.primaryColor == null
       ? colorScheme.primary
       : Color(preset.primaryColor!);
 }
 
+/// Previews the coordinated secondary role rather than the legacy accent value.
 Color _themePresetSecondaryColor(
   BuildContext context,
-  _ThemeColorPreset preset,
+  ThemeColorPreset preset,
 ) {
+  if (preset.id != 'custom') {
+    return _themePresetScheme(context, preset).secondary;
+  }
   final colorScheme = Theme.of(context).colorScheme;
   return preset.secondaryColor == null
       ? colorScheme.secondary
       : Color(preset.secondaryColor!);
 }
+
+/// Resolves swatches through the same palette path as the application.
+ColorScheme _themePresetScheme(BuildContext context, ThemeColorPreset preset) =>
+    operitColorScheme(
+      Theme.of(context).brightness,
+      ThemePreferenceSnapshot.fromJson({
+        ...ThemePreferenceDefaults.snapshot.toJson(),
+        'useCustomColors': preset.useCustomColors,
+        'customPrimaryColor': preset.primaryColor,
+        'customSecondaryColor': preset.secondaryColor,
+      }),
+    );
 
 class _ColorPresetTile extends StatelessWidget {
   const _ColorPresetTile({

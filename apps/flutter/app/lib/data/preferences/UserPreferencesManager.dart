@@ -1,13 +1,17 @@
 // ignore_for_file: file_names, constant_identifier_names
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/material.dart';
 import 'package:operit_ui/operit_ui.dart';
 
 import '../../core/bridge/ProxyCoreRuntimeBridge.dart';
 import '../../core/proxy/generated/CoreProxyClients.g.dart';
+import 'AppLanguage.dart';
 
 export 'package:operit_ui/operit_ui.dart' show ThemePreferenceSnapshot;
+export 'AppLanguage.dart';
 
 class LongPastedTextInputSettings {
   /// Creates the global settings for converting long pasted text to attachments.
@@ -60,8 +64,23 @@ class UserPreferencesManager {
   static const int longPastedTextInputThresholdStep = 500;
   static const int defaultLongPastedTextInputThreshold = 3000;
 
+  /// Shares the committed language with all application and system surfaces.
+  static final ValueNotifier<AppLanguage> appLanguage =
+      ValueNotifier<AppLanguage>(AppLanguage.system);
+
+  /// Resolves the application's language for surfaces outside the widget tree.
+  static Locale get resolvedAppLocale => appLanguage.value.resolveLocale(
+    WidgetsBinding.instance.platformDispatcher.locales,
+  );
+
   /// An unset preference keeps the application's desktop/mobile layout default.
-  static final ValueNotifier<bool?> enterSendsMessage = ValueNotifier<bool?>(null);
+  static final ValueNotifier<bool?> enterSendsMessage = ValueNotifier<bool?>(
+    null,
+  );
+
+  /// Keeps message navigation on the right until the user enables the left side.
+  static final ValueNotifier<bool> chatScrollNavigatorOnLeft =
+      ValueNotifier<bool>(false);
 
   static final ValueNotifier<LongPastedTextInputSettings>
   longPastedTextInputSettings = ValueNotifier<LongPastedTextInputSettings>(
@@ -72,7 +91,35 @@ class UserPreferencesManager {
   );
 
   static const String _fileName = 'user_preferences.preferences.json';
+  static const String _languageFileName = 'app_language.preferences.json';
   static const String _KEY_CHAT_SIDEBAR_TAB = 'chat_sidebar_tab_v1';
+  static const String _KEY_APP_LANGUAGE = 'app_language';
+
+  /// Loads the language before mounting the configured application.
+  Future<AppLanguage> loadAppLanguage() async {
+    final values = await _clients.preferencesPreferenceStorageManager
+        .getPreferences(
+          fileName: _languageFileName,
+          keys: <String>[_KEY_APP_LANGUAGE],
+        );
+    return AppLanguage.fromPreference(values[_KEY_APP_LANGUAGE]);
+  }
+
+  /// Observes committed language changes from other windows on this device.
+  Stream<AppLanguage> appLanguageFlow() => _clients
+      .preferencesPreferenceStorageManager
+      .preferencesFlow(fileName: _languageFileName)
+      .map((values) => AppLanguage.fromPreference(values[_KEY_APP_LANGUAGE]))
+      .distinct();
+
+  /// Persists a language choice before refreshing the running application.
+  Future<void> saveAppLanguage(AppLanguage language) async {
+    await _clients.preferencesPreferenceStorageManager.setPreferences(
+      fileName: _languageFileName,
+      values: <String, Object?>{_KEY_APP_LANGUAGE: language.code ?? 'system'},
+    );
+    appLanguage.value = language;
+  }
 
   /// Maps the shared snapshot onto the existing Space preference keys.
   static const Map<String, String> _appearancePreferenceKeys = <String, String>{
@@ -163,6 +210,9 @@ class UserPreferencesManager {
     'systemFontName': 'system_font_name',
     'customFontPath': 'custom_font_path',
     'fontScale': 'font_scale',
+    'codeFontType': 'code_font_type',
+    'codeFontSystemName': 'code_font_system_name',
+    'codeFontPath': 'code_font_path',
     'bubbleUserUseCustomFont': 'bubble_user_use_custom_font',
     'bubbleUserFontType': 'bubble_user_font_type',
     'bubbleUserSystemFontName': 'bubble_user_system_font_name',
@@ -188,6 +238,8 @@ class UserPreferencesManager {
   static const String _KEY_LONG_PASTED_TEXT_INPUT_ENABLED =
       'long_pasted_text_input_enabled';
   static const String _KEY_ENTER_SENDS_MESSAGE = 'enter_sends_message';
+  static const String _KEY_CHAT_SCROLL_NAVIGATOR_ON_LEFT =
+      'chat_scroll_navigator_on_left';
   static const String _KEY_LONG_PASTED_TEXT_INPUT_THRESHOLD =
       'long_pasted_text_input_threshold';
 
@@ -200,7 +252,9 @@ class UserPreferencesManager {
 
   /// Observes the explicit Enter preference, preserving the unset default state.
   Stream<bool?> enterSendsMessageFlow() => preferencesFlow()
-      .map((values) => _decodeEnterSendsMessage(values[_KEY_ENTER_SENDS_MESSAGE]))
+      .map(
+        (values) => _decodeEnterSendsMessage(values[_KEY_ENTER_SENDS_MESSAGE]),
+      )
       .distinct();
 
   /// Decodes the optional switch without accepting malformed persisted values.
@@ -217,6 +271,37 @@ class UserPreferencesManager {
   Future<void> saveEnterSendsMessage(bool enabled) async {
     await _setValues(<String, Object?>{_KEY_ENTER_SENDS_MESSAGE: enabled});
     enterSendsMessage.value = enabled;
+  }
+
+  /// Observes the shared message navigator placement preference.
+  Stream<bool> chatScrollNavigatorOnLeftFlow() => preferencesFlow()
+      .map(
+        (values) => _decodeChatScrollNavigatorOnLeft(
+          values[_KEY_CHAT_SCROLL_NAVIGATOR_ON_LEFT],
+        ),
+      )
+      .distinct();
+
+  /// Defines right-side placement as the initial value and rejects invalid data.
+  bool _decodeChatScrollNavigatorOnLeft(Object? value) =>
+      value == null ? false : _decodeBool(value);
+
+  /// Loads placement before the application mounts its chat views.
+  Future<bool> loadChatScrollNavigatorOnLeft() async {
+    final values = await _getValues(<String>[
+      _KEY_CHAT_SCROLL_NAVIGATOR_ON_LEFT,
+    ]);
+    return _decodeChatScrollNavigatorOnLeft(
+      values[_KEY_CHAT_SCROLL_NAVIGATOR_ON_LEFT],
+    );
+  }
+
+  /// Persists placement and refreshes all mounted chat views.
+  Future<void> saveChatScrollNavigatorOnLeft(bool enabled) async {
+    await _setValues(<String, Object?>{
+      _KEY_CHAT_SCROLL_NAVIGATOR_ON_LEFT: enabled,
+    });
+    chatScrollNavigatorOnLeft.value = enabled;
   }
 
   /// Observes and validates the global long-paste settings from the shared store.
@@ -350,6 +435,49 @@ class UserPreferencesManager {
           .distinct(mapEquals)
           .map(_themeSnapshotFromPreferences);
 
+  /// Combines Space appearance and device-local language for standalone windows.
+  Stream<({ThemePreferenceSnapshot appearance, AppLanguage language})>
+  windowPreferencesFlow() => Stream.multi((controller) {
+    ThemePreferenceSnapshot? appearance;
+    AppLanguage? language;
+    var completed = 0;
+
+    /// Publishes only after both stores have supplied their initial values.
+    void emit() {
+      if (appearance != null && language != null) {
+        controller.add((appearance: appearance!, language: language!));
+      }
+    }
+
+    /// Completes the combined stream once both preference watches finish.
+    void complete() {
+      if (++completed == 2) controller.close();
+    }
+
+    final appearanceSubscription = themePreferenceSnapshotFlow().listen(
+      (value) {
+        appearance = value;
+        emit();
+      },
+      onError: controller.addError,
+      onDone: complete,
+    );
+    final languageSubscription = appLanguageFlow().listen(
+      (value) {
+        language = value;
+        emit();
+      },
+      onError: controller.addError,
+      onDone: complete,
+    );
+    controller.onCancel = () async {
+      await Future.wait(<Future<void>>[
+        appearanceSubscription.cancel(),
+        languageSubscription.cancel(),
+      ]);
+    };
+  });
+
   /// Filters unrelated settings before appearance validation and change detection.
   static Map<String, Object?> _appearancePreferences(
     Map<String, Object?> preferences,
@@ -472,6 +600,9 @@ class UserPreferencesManager {
     String? systemFontName,
     String? customFontPath,
     double? fontScale,
+    String? codeFontType,
+    String? codeFontSystemName,
+    String? codeFontPath,
     bool? bubbleUserUseCustomFont,
     String? bubbleUserFontType,
     String? bubbleUserSystemFontName,
@@ -600,6 +731,10 @@ class UserPreferencesManager {
       if (systemFontName != null) 'systemFontName': systemFontName,
       if (customFontPath != null) 'customFontPath': customFontPath,
       if (fontScale != null) 'fontScale': fontScale,
+      if (codeFontType != null) 'codeFontType': codeFontType,
+      if (codeFontSystemName != null)
+        'codeFontSystemName': codeFontSystemName,
+      if (codeFontPath != null) 'codeFontPath': codeFontPath,
       if (changesGlobalFont || bubbleUserUseCustomFont != null)
         'bubbleUserUseCustomFont': changesGlobalFont
             ? false

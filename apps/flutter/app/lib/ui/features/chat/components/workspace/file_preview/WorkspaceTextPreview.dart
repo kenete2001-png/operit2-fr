@@ -9,6 +9,7 @@ import '../../../../../../l10n/generated/app_localizations.dart';
 import '../../../../../common/components/RetainedPage.dart';
 import '../../../../../common/markdown/StreamMarkdownRenderer.dart';
 import '../../../../../common/markdown/MarkdownLink.dart';
+import '../../../../../common/markdown/MarkdownCodeTypeface.dart';
 import '../../../../../theme/OperitGlassSurface.dart';
 import '../WorkspaceTabModels.dart';
 import 'WorkspaceTextDocument.dart';
@@ -338,8 +339,10 @@ class _WorkspaceTextPreviewState extends State<WorkspaceTextPreview> {
                       padding: EdgeInsets.zero,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       visualDensity: VisualDensity.standard,
-                      textStyle: const TextStyle(
-                        fontFamily: 'monospace',
+                      textStyle: TextStyle(
+                        fontFamily: operitCodeFontFamilyOf(context),
+                        fontFamilyFallback:
+                            operitCodeFontFamilyFallbackOf(context),
                         fontSize: 18,
                         height: 1,
                       ),
@@ -361,7 +364,8 @@ class _WorkspaceTextPreviewState extends State<WorkspaceTextPreview> {
     final theme = Theme.of(context);
     final style = theme.textTheme.bodyMedium!.copyWith(
       color: theme.colorScheme.onSurface,
-      fontFamily: 'monospace',
+      fontFamily: operitCodeFontFamilyOf(context),
+      fontFamilyFallback: operitCodeFontFamilyFallbackOf(context),
       fontSize: 14,
       height: 1.45,
     );
@@ -433,27 +437,30 @@ class _WorkspaceTextPreviewState extends State<WorkspaceTextPreview> {
                         ),
                       ),
                       if (_showMarkdown)
-                        CodeEditor(
-                          key: _viewportKey,
-                          identity: _document,
-                          scrollController: _previewScroll,
-                          scale: _document.scale,
-                          onScaleChanged: _document.updateScale,
-                          readOnly: true,
-                          panEnabled: false,
-                          wrapToViewport: false,
-                          contentBuilder: (context) => StreamMarkdownRenderer(
+                        // Let viewport drags win before mouse text selection.
+                        SelectionArea(
+                          child: CodeEditor(
+                            key: _viewportKey,
+                            identity: _document,
                             scrollController: _previewScroll,
-                            scrollPhysics: CodeEditorViewportScope.maybeOf(
-                              context,
-                            )?.physics,
-                            scrollPadding: const EdgeInsets.all(12),
-                            content: _document.text,
-                            isStreaming: false,
-                            textColor: theme.colorScheme.onSurface,
-                            backgroundColor: Colors.transparent,
-                            onLinkClick: _openMarkdownLink,
-                            splitMarkdownContent: widget.splitMarkdownContent,
+                            scale: _document.scale,
+                            onScaleChanged: _document.updateScale,
+                            readOnly: true,
+                            wrapToViewport: false,
+                            contentBuilder: (context) => StreamMarkdownRenderer(
+                              selectionRoot: false,
+                              scrollController: _previewScroll,
+                              scrollPhysics: CodeEditorViewportScope.maybeOf(
+                                context,
+                              )?.physics,
+                              scrollPadding: const EdgeInsets.all(12),
+                              content: _document.text,
+                              isStreaming: false,
+                              textColor: theme.colorScheme.onSurface,
+                              backgroundColor: Colors.transparent,
+                              onLinkClick: _openMarkdownLink,
+                              splitMarkdownContent: widget.splitMarkdownContent,
+                            ),
                           ),
                         )
                       else
@@ -498,7 +505,10 @@ class WorkspaceTextBody extends StatelessWidget {
           text,
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurface,
-            fontFamily: monospace ? 'monospace' : null,
+            fontFamily: monospace ? operitCodeFontFamilyOf(context) : null,
+            fontFamilyFallback: monospace
+                ? operitCodeFontFamilyFallbackOf(context)
+                : null,
             height: 1.45,
           ),
         ),

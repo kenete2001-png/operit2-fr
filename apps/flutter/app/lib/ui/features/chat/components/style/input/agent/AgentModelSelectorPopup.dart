@@ -22,6 +22,7 @@ class AgentModelSelectorPopup extends StatefulWidget {
     super.key,
     required this.viewModel,
     this.currentChatId,
+    this.settingsRevision = 0,
     required this.onDismiss,
     required this.onModelChanged,
     this.onThinkingChanged,
@@ -29,6 +30,9 @@ class AgentModelSelectorPopup extends StatefulWidget {
 
   final ChatViewModel viewModel;
   final String? currentChatId;
+
+  /// Reloads model settings without closing or recreating the popup.
+  final int settingsRevision;
   final VoidCallback onDismiss;
   final void Function(
     String modelId, {
@@ -68,12 +72,13 @@ class _AgentModelSelectorPopupState extends State<AgentModelSelectorPopup> {
     return _loadAgentModelSelectorData(_clients, widget.currentChatId);
   }
 
-  /// Discards model-specific settings when the popup receives a different chat.
+  /// Reloads changed settings while preserving the open popup and its controls.
   @override
   void didUpdateWidget(covariant AgentModelSelectorPopup oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.currentChatId != widget.currentChatId ||
-        oldWidget.viewModel != widget.viewModel) {
+        oldWidget.viewModel != widget.viewModel ||
+        oldWidget.settingsRevision != widget.settingsRevision) {
       _thinking = null;
       _settingsFuture = _loadSettings();
     }
@@ -84,6 +89,8 @@ class _AgentModelSelectorPopupState extends State<AgentModelSelectorPopup> {
     core_proxy.ProviderProfile provider,
     core_proxy.ModelProfile model,
   ) async {
+    final viewModel = widget.viewModel;
+    final chatId = widget.currentChatId;
     if (_isDisallowedChatModel(model.id)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -93,20 +100,20 @@ class _AgentModelSelectorPopupState extends State<AgentModelSelectorPopup> {
       return;
     }
     final selection = await ToolPkgChatUiCatalog(
-      clients: _clients,
-    ).loadModelSelection(chatId: widget.currentChatId);
-    if (!mounted) return;
+      clients: viewModel.clients,
+    ).loadModelSelection(chatId: chatId);
+    if (!mounted ||
+        widget.currentChatId != chatId ||
+        widget.viewModel != viewModel) {
+      return;
+    }
     if (!selection.canSelectGlobal) {
       setState(() {
         _settingsFuture = _loadSettings();
       });
       return;
     }
-    await _clients.preferencesFunctionalConfigManager.setModelForFunction(
-      functionType: core_proxy.FunctionType.chat,
-      providerId: provider.id,
-      modelId: model.id,
-    );
+    await _setChatModel(viewModel, chatId, provider, model);
     if (!mounted) return;
     widget.onModelChanged(
       model.id,
@@ -300,6 +307,8 @@ class _AgentModelMenuSectionState extends State<AgentModelMenuSection> {
     core_proxy.ProviderProfile provider,
     core_proxy.ModelProfile model,
   ) async {
+    final viewModel = widget.viewModel;
+    final chatId = widget.currentChatId;
     if (_isDisallowedChatModel(model.id)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -309,20 +318,20 @@ class _AgentModelMenuSectionState extends State<AgentModelMenuSection> {
       return;
     }
     final selection = await ToolPkgChatUiCatalog(
-      clients: _clients,
-    ).loadModelSelection(chatId: widget.currentChatId);
-    if (!mounted) return;
+      clients: viewModel.clients,
+    ).loadModelSelection(chatId: chatId);
+    if (!mounted ||
+        widget.currentChatId != chatId ||
+        widget.viewModel != viewModel) {
+      return;
+    }
     if (!selection.canSelectGlobal) {
       setState(() {
         _settingsFuture = _loadSettings();
       });
       return;
     }
-    await _clients.preferencesFunctionalConfigManager.setModelForFunction(
-      functionType: core_proxy.FunctionType.chat,
-      providerId: provider.id,
-      modelId: model.id,
-    );
+    await _setChatModel(viewModel, chatId, provider, model);
     if (!mounted) return;
     widget.onDismiss();
   }
@@ -1883,6 +1892,33 @@ class _InfoIconButton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Creates the first real conversation when needed and changes only its model selection.
+Future<void> _setChatModel(
+  ChatViewModel viewModel,
+  String? chatId,
+  core_proxy.ProviderProfile provider,
+  core_proxy.ModelProfile model,
+) async {
+  final chat = viewModel.chatCore;
+  final target =
+      chatId ??
+      await chat.createNewChat(
+        setAsCurrentChat: true,
+        sourceChatId: null,
+        parentChatId: null,
+        workspaceId: null,
+        input: null,
+      );
+  await chat.setChatModelBinding(
+    chatId: target,
+    binding: core_proxy.FunctionModelBinding(
+      providerId: provider.id,
+      modelId: model.id,
+      followsChat: false,
+    ),
+  );
 }
 
 /// Loads selectable models even when the current binding no longer exists.

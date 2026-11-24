@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    style="?homeCardStyle"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:orientation="horizontal">
+
+    <ImageView
+        android:id="@android:id/icon"
+        style="@style/CardIcon"
+        android:duplicateParentState="true"
+        android:importantForAccessibility="no"
+        android:src="@drawable/ic_server_error_24dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/home_icon_padding"
+        android:duplicateParentState="true"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@android:id/text1"
+            style="@style/CardTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:duplicateParentState="true"
+            android:lineSpacingExtra="2dp"
+            tools:text="Running (version 10)" />
+
+        <TextView
+            android:id="@android:id/text2"
+            style="@style/CardSummary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:duplicateParentState="true" />
+
+        <!-- Operit: keep the explicit stop action beside the service status. -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@android:id/button1"
+            style="@style/CardButton"
+            android:layout_marginTop="12dp"
+            android:text="@string/operit_stop_service"
+            android:visibility="gone"
+            app:icon="@drawable/ic_server_error_24dp" />
+
+    </LinearLayout>
+
+</LinearLayout>

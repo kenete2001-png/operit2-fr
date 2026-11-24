@@ -1,6 +1,7 @@
 // ignore_for_file: file_names
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
@@ -137,10 +138,12 @@ class _AgentChatInputSectionState extends State<AgentChatInputSection>
     Map<core_proxy.FunctionType, core_proxy.FunctionModelBinding>
   >?
   _modelBindingSubscription;
+  StreamSubscription<String>? _chatModelSubscription;
   StreamSubscription<List<core_proxy.ProviderProfile>>?
   _modelProfilesSubscription;
   StreamSubscription<void>? _modelCatalogSubscription;
   int _modelLabelGeneration = 0;
+  int _modelSettingsRevision = 0;
   List<core_proxy.ProviderProfile> _modelProfiles = const [];
   bool _draggingFiles = false;
   bool _inputExpanded = false;
@@ -169,6 +172,7 @@ class _AgentChatInputSectionState extends State<AgentChatInputSection>
       _dismissModelSettingsPopup();
       if (oldWidget.viewModel != widget.viewModel) {
         _modelBindingSubscription?.cancel();
+        _chatModelSubscription?.cancel();
         _modelProfilesSubscription?.cancel();
         _modelCatalogSubscription?.cancel();
         _watchCurrentModelLabel();
@@ -275,6 +279,7 @@ class _AgentChatInputSectionState extends State<AgentChatInputSection>
                     key: _modelPopupWidgetKey,
                     viewModel: widget.viewModel,
                     currentChatId: widget.currentChatId,
+                    settingsRevision: _modelSettingsRevision,
                     onDismiss: _dismissModelSettingsPopup,
                     onModelChanged: _handleModelChanged,
                   ),
@@ -424,6 +429,18 @@ class _AgentChatInputSectionState extends State<AgentChatInputSection>
             _modelProfiles = profiles;
             _requestModelRefresh();
           }, onError: _logModelLabelError);
+      _chatModelSubscription = widget.viewModel.chatCore
+          .chatHistoriesFlow()
+          .map(
+            (histories) => jsonEncode(
+              histories
+                  .where((history) => history.id == widget.currentChatId)
+                  .map((history) => history.pluginExtensions)
+                  .toList(),
+            ),
+          )
+          .distinct()
+          .listen((_) => _requestModelRefresh(), onError: _logModelLabelError);
       _modelCatalogSubscription = ToolPkgCatalogChangeBus.listen(
         _requestModelRefresh,
       );
@@ -433,9 +450,10 @@ class _AgentChatInputSectionState extends State<AgentChatInputSection>
     }
   }
 
-  /// Invalidates open model controls and reloads the actual chat binding.
+  /// Refreshes open model controls in place and reloads the actual chat binding.
   void _requestModelRefresh() {
-    _dismissModelSettingsPopup();
+    _modelSettingsRevision++;
+    _modelPopupEntry?.markNeedsBuild();
     unawaited(_refreshCurrentModelLabel());
   }
 
@@ -487,7 +505,7 @@ class _AgentChatInputSectionState extends State<AgentChatInputSection>
     }
   }
 
-  /// Reloads authoritative selection after the global model changes.
+  /// Reloads authoritative selection after this conversation's model changes.
   void _handleModelChanged(
     String modelId, {
     String? providerTypeId,
@@ -589,6 +607,7 @@ class _AgentChatInputSectionState extends State<AgentChatInputSection>
     WidgetsBinding.instance.removeObserver(this);
     widget.controller.removeListener(_handleInputChanged);
     _modelBindingSubscription?.cancel();
+    _chatModelSubscription?.cancel();
     _modelProfilesSubscription?.cancel();
     _modelCatalogSubscription?.cancel();
     PluginHotReload.revision.removeListener(_requestModelRefresh);

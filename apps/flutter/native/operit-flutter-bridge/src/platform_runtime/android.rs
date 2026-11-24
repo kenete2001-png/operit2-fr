@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use operit_host_android_native::{
-    createRuntimeHostManager, AndroidBluetoothHost, AndroidFileSystemHost, AndroidSystemOperationHost, AndroidTerminalHost,
+    createRuntimeHostManager, AndroidBluetoothHost, AndroidFileSystemHost, AndroidSystemOperationHost, AndroidTerminalHost, AndroidWebVisitHost,
 };
 use operit_host_api::HostManager::HostManager;
 use operit_host_api::SystemOperationHost;
@@ -50,7 +50,7 @@ pub(crate) fn create_host_context(startup: &BridgeStartup) -> Result<HostManager
             startup.runtimeRoot.clone(),
             startup.workspaceRoot.clone(),
             archiveRuntimeRoot.clone(),
-            Arc::new(FlutterWebVisitBridge::new()),
+            Arc::new(AndroidWebVisitHost::new()),
             Arc::new(AndroidSystemOperationHost::new(
                 Arc::new(ownerGetSystemSetting),
                 Arc::new(ownerModifySystemSetting),
@@ -58,7 +58,9 @@ pub(crate) fn create_host_context(startup: &BridgeStartup) -> Result<HostManager
             )),
         )
     }
-    .withTerminalHost(Arc::new(AndroidTerminalHost::new()));
+    .withTerminalHost(Arc::new(AndroidTerminalHost::new().withTermuxLauncher(Arc::new(
+        |request| ownerSystemOperation("launch_termux_terminal", request),
+    ))));
     context = context.withUiAutomationHost(Arc::new(operit_host_api::UiAutomation::OwnerUiAutomationHost {
         invoke: Arc::new(|operation, parameters| ownerSystemOperation("ui_automation", serde_json::json!({ "operation": operation, "parameters": parameters }))),
     }));

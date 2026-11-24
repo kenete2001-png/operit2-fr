@@ -3,15 +3,12 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/proxy/generated/CoreProxyModels.g.dart' as core_proxy;
+import '../../../l10n/generated/app_localizations.dart';
 import '../ApiErrorText.dart';
 
 class CommonNetworkErrorView extends StatelessWidget {
   /// Creates a model configuration error with its original details.
-  const CommonNetworkErrorView({
-    super.key,
-    this.errorDetails,
-    this.errorText,
-  });
+  const CommonNetworkErrorView({super.key, this.errorDetails, this.errorText});
 
   final core_proxy.CoreProxyErrorDetails? errorDetails;
   final String? errorText;
@@ -22,7 +19,12 @@ class CommonNetworkErrorView extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
-    final summary = NetworkErrorSummary.fromDetails(errorDetails, errorText);
+    final l10n = AppLocalizations.of(context)!;
+    final summary = NetworkErrorSummary.fromDetails(
+      errorDetails,
+      errorText,
+      l10n,
+    );
 
     return Semantics(
       liveRegion: true,
@@ -30,20 +32,14 @@ class CommonNetworkErrorView extends StatelessWidget {
         decoration: BoxDecoration(
           color: colorScheme.errorContainer.withValues(alpha: 0.34),
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: colorScheme.error.withValues(alpha: 0.18),
-          ),
+          border: Border.all(color: colorScheme.error.withValues(alpha: 0.18)),
         ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Icon(
-                summary.icon,
-                size: 20,
-                color: colorScheme.error,
-              ),
+              Icon(summary.icon, size: 20, color: colorScheme.error),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -67,7 +63,7 @@ class CommonNetworkErrorView extends StatelessWidget {
                     if (summary.detail != null) ...<Widget>[
                       const SizedBox(height: 6),
                       SelectableText(
-                        '原始错误：\n${summary.detail!}',
+                        l10n.apiErrorOriginal(summary.detail!),
                         style: textTheme.bodySmall?.copyWith(
                           color: colorScheme.onErrorContainer.withValues(
                             alpha: 0.74,
@@ -105,42 +101,49 @@ class NetworkErrorSummary {
   factory NetworkErrorSummary.fromDetails(
     core_proxy.CoreProxyErrorDetails? details,
     String? text,
+    AppLocalizations l10n,
   ) {
     final original = text ?? details?.message;
     final statusCode = switch (details?.httpStatus) {
       final int status => status,
       null => apiErrorHttpStatus(original ?? ''),
     };
-    final httpExplanation = apiErrorExplanation(statusCode);
+    final httpExplanation = apiErrorExplanation(
+      statusCode,
+      l10n,
+      original: original,
+    );
     final explanation = switch ((
       httpExplanation,
       details?.variant,
       details?.kind,
     )) {
       (final ApiErrorExplanation http, _, _) => (
-        title: 'HTTP $statusCode：${http.title}',
+        title: l10n.apiErrorHttpTitle(statusCode!, http.title),
         message: http.message,
         category: http.category,
       ),
       (_, 'ModelAlreadyExists', _) => (
-        title: '模型已存在',
-        message: '模型“${details!.stringField('modelId')!}”'
-            '已添加到供应商“${details.stringField('providerName')!}”。',
+        title: l10n.apiErrorModelExistsTitle,
+        message: l10n.apiErrorModelExistsMessage(
+          details!.stringField('modelId')!,
+          details.stringField('providerName')!,
+        ),
         category: ApiErrorCategory.info,
       ),
       (_, 'ModelListFetch', _) => (
-        title: '模型列表拉取失败',
-        message: '没有拿到供应商返回的模型列表，请检查服务地址、访问密钥和网络连接。',
+        title: l10n.apiErrorModelListTitle,
+        message: l10n.apiErrorModelListMessage,
         category: ApiErrorCategory.network,
       ),
       (_, _, 'network') => (
-        title: '网络连接失败',
-        message: '无法连接到模型供应商，请检查网络连接和服务地址。',
+        title: l10n.apiErrorNetworkTitle,
+        message: l10n.apiErrorNetworkMessage,
         category: ApiErrorCategory.network,
       ),
       _ => (
-        title: '模型配置失败',
-        message: '模型配置操作出现异常，请查看原始错误中的具体原因。',
+        title: l10n.apiErrorModelConfigTitle,
+        message: l10n.apiErrorModelConfigMessage,
         category: ApiErrorCategory.unknown,
       ),
     };

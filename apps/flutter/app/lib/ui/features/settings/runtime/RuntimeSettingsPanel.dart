@@ -487,9 +487,9 @@ class _RuntimeSettingsPanelState extends State<RuntimeSettingsPanel>
           onPressed: _busy ? null : _handleRemovedFromSpace,
           child: Text(l10n.settingsRuntimeRemovedFromSpaceConfirm),
         ),
-      // A failing direct link is what this fixes; relay reachability does not
-      // matter because the operator address replaces the stored one outright.
-      if (probeState == _PairedRemoteProbeState.offline)
+      // Only the pairing initiator owns a dial record. Relay reachability does
+      // not affect whether that outbound record can be updated.
+      if (device.outbound && probeState == _PairedRemoteProbeState.offline)
         MenuItemButton(
           onPressed: _busy
               ? null
@@ -1187,9 +1187,8 @@ class _RuntimeSettingsPanelState extends State<RuntimeSettingsPanel>
   /// Collects an operator-supplied address and repoints the paired device's
   /// dial record at it: the runtime validates, saves, and probes the new
   /// address immediately. Offered only while the direct link is failing —
-  /// a live link never needs its endpoint rewritten by hand. Works the same
-  /// for either pairing direction because the runtime updates whichever
-  /// dialable record this side holds.
+  /// a live link never needs its endpoint rewritten by hand. Requires an
+  /// outbound pairing record owned by this device.
   Future<void> _updateDeviceEndpoint(
     generated.RuntimePairedDevice device,
     AppLocalizations l10n,
@@ -1712,6 +1711,7 @@ class _DeviceSpaceIdentityChipState extends State<_DeviceSpaceIdentityChip> {
       builder: (context, constraints) {
         return InkWell(
           onTap: widget.onTap,
+          mouseCursor: SystemMouseCursors.click,
           borderRadius: BorderRadius.circular(20),
           child: ConstrainedBox(
             constraints: BoxConstraints(
@@ -1760,6 +1760,13 @@ class _DeviceSpaceIdentityChipState extends State<_DeviceSpaceIdentityChip> {
                           fontWeight: FontWeight.w700,
                         ),
                       ),
+                    ),
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 17,
+                      color: scheme.onSurfaceVariant,
+                      semanticLabel: l10n.runtimeIdentityManage,
                     ),
                   ],
                 ),

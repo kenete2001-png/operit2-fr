@@ -9,17 +9,26 @@ import '../../../../l10n/generated/app_localizations.dart';
 import '../../../main/layout/NavigationLayoutMetrics.dart';
 import '../../../theme/OperitGlassSurface.dart';
 import '../components/SettingsControlStyles.dart';
+import 'AppLanguageControl.dart';
 
 class GlobalBehaviorSettingsPanel extends StatelessWidget {
   const GlobalBehaviorSettingsPanel({super.key});
 
-  /// Builds global chat input behavior settings.
+  /// Builds application language and global chat behavior settings.
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
       children: <Widget>[
+        _GlobalBehaviorSectionCard(
+          title: l10n.settingsAppLanguageTitle,
+          children: const <Widget>[AppLanguageControl()],
+        ),
+        _GlobalBehaviorSectionCard(
+          title: l10n.settingsGlobalBehaviorChatLayoutSection,
+          children: const <Widget>[_ChatScrollNavigatorSideControl()],
+        ),
         _GlobalBehaviorSectionCard(
           title: l10n.settingsGlobalBehaviorChatInputSection,
           children: const <Widget>[
@@ -28,6 +37,33 @@ class GlobalBehaviorSettingsPanel extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+class _ChatScrollNavigatorSideControl extends StatelessWidget {
+  const _ChatScrollNavigatorSideControl();
+
+  /// Changes the physical side of the message rail independently of the theme.
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    return ValueListenableBuilder<bool>(
+      valueListenable: UserPreferencesManager.chatScrollNavigatorOnLeft,
+      builder: (context, enabled, _) => SwitchListTile(
+        key: const ValueKey('settings.chatScrollNavigatorOnLeft'),
+        contentPadding: EdgeInsets.zero,
+        dense: true,
+        visualDensity: VisualDensity.compact,
+        title: Text(l10n.settingsGlobalBehaviorChatScrollNavigatorOnLeft),
+        subtitle: Text(
+          l10n.settingsGlobalBehaviorChatScrollNavigatorOnLeftDescription,
+        ),
+        value: enabled,
+        onChanged: (value) => unawaited(
+          const UserPreferencesManager().saveChatScrollNavigatorOnLeft(value),
+        ),
+      ),
     );
   }
 }

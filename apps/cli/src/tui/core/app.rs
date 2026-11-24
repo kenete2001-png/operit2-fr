@@ -48,7 +48,10 @@ use operit_util::GithubReleaseUtil::{
 };
 use operit_util::MarkdownRenderStream::MarkdownStreamEvent;
 
-use super::commands::{expand_plugin_command, keyword_options_for, TuiPluginCommandSpec};
+use super::commands::{
+    expand_plugin_command, keyword_options_for, network_command_usage, TuiPluginArgSpec,
+    TuiPluginCommandSpec,
+};
 use super::config;
 use super::config::ConfigUi;
 use super::helpers::{short_chat_label, split_command_line};
@@ -171,6 +174,8 @@ pub(super) struct OperitTui {
     /// not replay requests that predate the session.
     network_snapshots_seeded: bool,
     pub(super) context_usage_label: String,
+    /// Persistent right footer segment: chat model binding label.
+    pub(super) model_label: String,
     pub(super) transcript_scroll: u16,
     pub(super) transcript_viewport_height: u16,
     pub(super) transcript_max_scroll: u16,
@@ -227,6 +232,23 @@ struct PluginCommandInfoPayload {
     name: String,
     usage: String,
     description: String,
+    /// Structured argument declarations from the new plugin protocol;
+    /// absent/empty means the legacy usage-string convention applies.
+    #[serde(default)]
+    args: Vec<PluginCommandArgPayload>,
+}
+
+#[derive(Deserialize)]
+struct PluginCommandArgPayload {
+    name: String,
+    #[serde(default = "default_plugin_arg_required")]
+    required: bool,
+    #[serde(default)]
+    options: Vec<String>,
+}
+
+fn default_plugin_arg_required() -> bool {
+    true
 }
 
 /// Loads enabled ToolPkg slash-command metadata from the Core command registry.
@@ -249,7 +271,28 @@ async fn load_plugin_command_specs(
         .map_err(|error| format!("plugin command metadata is invalid: {error}"))?;
     Ok(commands
         .into_iter()
-        .flat_map(|command| expand_plugin_command(command.name, command.usage, command.description))
+        .flat_map(|command| {
+            if command.args.is_empty() {
+                // Legacy protocol: expand the usage-string convention.
+                expand_plugin_command(command.name, command.usage, command.description)
+            } else {
+                // Structured protocol: one spec with declared arguments.
+                vec![TuiPluginCommandSpec {
+                    name: command.name,
+                    usage: command.usage,
+                    description: command.description,
+                    args: command
+                        .args
+                        .into_iter()
+                        .map(|arg| TuiPluginArgSpec {
+                            label: arg.name,
+                            options: arg.options,
+                            required: arg.required,
+                        })
+                        .collect(),
+                }]
+            }
+        })
         .collect())
 }
 
@@ -391,8 +434,8 @@ pub(super) enum DeviceManagerMode {
 pub(super) struct DeviceManagerModal {
     pub(super) topology: RuntimeDeviceSpaceTopology,
     pub(super) blocked: BTreeSet<String>,
-    /// Devices this node already holds a pairing (edge) for.
-    pub(super) paired: BTreeSet<String>,
+    /// Local pairing records, including the direction that owns each dial address.
+    pub(super) paired: BTreeMap<String, RuntimePairedDevice>,
     pub(super) requests: Vec<SpaceJoinRequest>,
     pub(super) roles: BTreeMap<String, NetworkControlRole>,
     pub(super) initialized: bool,
@@ -451,12 +494,11 @@ impl DeviceManagerModal {
             return Vec::new();
         }
         let mut actions = Vec::new();
-        if !self.blocked.contains(device_id) && !self.paired.contains(device_id) {
+        if !self.blocked.contains(device_id) && !self.paired.contains_key(device_id) {
             actions.push(DeviceManagerAction::Pair);
         }
-        // Rewriting the dial address only makes sense for a device this node
-        // already holds a pairing record for; the runtime rejects it otherwise.
-        if self.paired.contains(device_id) {
+        // Only an outbound pairing record owns an address this node can dial.
+        if self.paired.get(device_id).is_some_and(|peer| peer.outbound) {
             actions.push(DeviceManagerAction::UpdateEndpoint);
         }
         if self.blocked.contains(device_id) {
@@ -1002,7 +1044,166 @@ pub(super) enum FocusArea {
     Input,
 }
 
+/// One modal surface on the overlay stack. The stack is derived from live
+/// state in one place (`overlay_stack`) and drives BOTH the render z-order
+/// (back-to-front) and keyboard routing (front-to-back), so the two can no
+/// longer drift apart.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum OverlayKind {
+    ComposeEditor,
+    Config,
+    Help,
+    StartupInstall,
+    StartupUpdate,
+    StartupWorkspace,
+    NetworkHub,
+    ListPopup,
+    DeviceManager,
+    PairWizard,
+    JoinDecision,
+    ListenerSettings,
+    EndpointEdit,
+    DiffViewer,
+    ControlPanel,
+    /// Forced security prompt; renders and receives keys above everything.
+    Approval,
+}
+
 impl OperitTui {
+    /// Returns active overlays ordered back-to-front. The model chooser is
+    /// deliberately absent: it is focus-driven and keeps its leaky-modal
+    /// behavior (global shortcuts still work while it is open).
+    pub(super) fn overlay_stack(&self) -> Vec<OverlayKind> {
+        let mut stack = Vec::new();
+        if self.compose.editor.is_some() {
+            stack.push(OverlayKind::ComposeEditor);
+        }
+        if self.show_config_popup {
+            stack.push(OverlayKind::Config);
+        }
+        if self.show_help {
+            stack.push(OverlayKind::Help);
+        }
+        if self.startup_install_prompt.is_some() {
+            stack.push(OverlayKind::StartupInstall);
+        }
+        if self.startup_update_prompt.is_some() && self.startup_install_prompt.is_none() {
+            stack.push(OverlayKind::StartupUpdate);
+        }
+        if self.startup_workspace_prompt.is_some()
+            && self.startup_update_prompt.is_none()
+            && self.startup_install_prompt.is_none()
+        {
+            stack.push(OverlayKind::StartupWorkspace);
+        }
+        if self.network_hub.is_some() {
+            stack.push(OverlayKind::NetworkHub);
+        }
+        if self.show_list_popup {
+            stack.push(OverlayKind::ListPopup);
+        }
+        if self.device_manager.is_some() {
+            stack.push(OverlayKind::DeviceManager);
+        }
+        if self.pair_wizard.is_some() {
+            stack.push(OverlayKind::PairWizard);
+        }
+        if self.join_decision.is_some() {
+            stack.push(OverlayKind::JoinDecision);
+        }
+        if self.listener_settings.is_some() {
+            stack.push(OverlayKind::ListenerSettings);
+        }
+        if self.endpoint_edit.is_some() {
+            stack.push(OverlayKind::EndpointEdit);
+        }
+        if self.diff_viewer.is_some() {
+            stack.push(OverlayKind::DiffViewer);
+        }
+        if self.control_panel.is_some() {
+            stack.push(OverlayKind::ControlPanel);
+        }
+        if !self.current_tool_permission_requests.is_empty() {
+            stack.push(OverlayKind::Approval);
+        }
+        stack
+    }
+
+    /// Hands one key event to the named overlay's existing handler. Every
+    /// overlay handler consumes the key; routing never falls through.
+    async fn dispatch_overlay_key(
+        &mut self,
+        kind: OverlayKind,
+        key: KeyEvent,
+    ) -> Result<(), String> {
+        match kind {
+            OverlayKind::ComposeEditor => {
+                match key.code {
+                    KeyCode::Esc => {
+                        self.compose.editor = None;
+                    }
+                    KeyCode::Enter => {
+                        if let Err(error) = self.compose.commit_editor(&mut self.core).await {
+                            self.status_message = error;
+                        }
+                    }
+                    KeyCode::Backspace => {
+                        self.compose.editor.as_mut().unwrap().value.pop();
+                    }
+                    KeyCode::Char(ch)
+                        if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT =>
+                    {
+                        self.compose.editor.as_mut().unwrap().value.push(ch);
+                    }
+                    _ => {}
+                }
+                Ok(())
+            }
+            OverlayKind::Config => self.handle_config_key(key).await,
+            OverlayKind::Help => {
+                match key.code {
+                    KeyCode::Esc | KeyCode::Char('?') | KeyCode::F(1) => {
+                        self.show_help = false;
+                    }
+                    _ => {}
+                }
+                Ok(())
+            }
+            OverlayKind::StartupInstall => self.handle_startup_install_prompt_key(key).await,
+            OverlayKind::StartupUpdate => self.handle_startup_update_prompt_key(key).await,
+            OverlayKind::StartupWorkspace => self.handle_startup_workspace_prompt_key(key).await,
+            OverlayKind::NetworkHub => self.handle_network_hub_key(key).await,
+            OverlayKind::ListPopup => {
+                // Confirm sub-states open from list popups take keys before
+                // the generic popup handler.
+                if self.discover_select_pending && key.code == KeyCode::Enter {
+                    self.start_pair_wizard_from_discovery().await;
+                    return Ok(());
+                }
+                if self.leave_confirm_pending {
+                    self.handle_leave_confirm_key(key).await;
+                    return Ok(());
+                }
+                if self.unpair_confirm.is_some() {
+                    self.handle_unpair_confirm_key(key).await;
+                    return Ok(());
+                }
+                self.handle_list_popup_key(key)
+            }
+            OverlayKind::DeviceManager => self.handle_device_manager_key(key).await,
+            OverlayKind::PairWizard => self.handle_pair_wizard_key(key).await,
+            OverlayKind::JoinDecision => self.handle_join_decision_key(key).await,
+            OverlayKind::ListenerSettings => self.handle_listener_settings_key(key).await,
+            OverlayKind::EndpointEdit => self.handle_endpoint_edit_key(key).await,
+            OverlayKind::DiffViewer => self.handle_diff_viewer_key(key),
+            OverlayKind::ControlPanel => self.handle_control_panel_key(key).await,
+            OverlayKind::Approval => {
+                self.handle_approval_key(key).await;
+                Ok(())
+            }
+        }
+    }
+
     pub(super) async fn new(
         mut core: TuiCore,
         networkControl: RuntimeRemoteLinkService,
@@ -1178,6 +1379,7 @@ impl OperitTui {
             last_space_membership_check_at: None,
             network_snapshots_seeded: false,
             context_usage_label: String::new(),
+            model_label: String::new(),
             transcript_scroll: 0,
             transcript_viewport_height: 1,
             transcript_max_scroll: 0,
@@ -1901,20 +2103,10 @@ impl OperitTui {
             return Ok(());
         }
 
-        // Config popup has its own key handling — intercept early
-        if self.show_config_popup {
-            self.handle_config_key(key).await?;
-            return Ok(());
-        }
-
-        if self.diff_viewer.is_some() {
-            self.handle_diff_viewer_key(key)?;
-            return Ok(());
-        }
-
-        if self.control_panel.is_some() {
-            self.handle_control_panel_key(key).await?;
-            return Ok(());
+        // The front-most overlay consumes the key; its z-order and key
+        // priority come from the same overlay stack.
+        if let Some(kind) = self.overlay_stack().pop() {
+            return self.dispatch_overlay_key(kind, key).await;
         }
 
         if matches!(key.code, KeyCode::Char('c'))
@@ -1935,111 +2127,6 @@ impl OperitTui {
         }
 
         self.ctrl_c_pending = false;
-
-        if self.compose.editor.is_some() {
-            match key.code {
-                KeyCode::Esc => {
-                    self.compose.editor = None;
-                }
-                KeyCode::Enter => {
-                    if let Err(error) = self.compose.commit_editor(&mut self.core).await {
-                        self.status_message = error;
-                    }
-                }
-                KeyCode::Backspace => {
-                    self.compose.editor.as_mut().unwrap().value.pop();
-                }
-                KeyCode::Char(ch)
-                    if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT =>
-                {
-                    self.compose.editor.as_mut().unwrap().value.push(ch);
-                }
-                _ => {}
-            }
-            return Ok(());
-        }
-
-        if self.startup_install_prompt.is_some() {
-            self.handle_startup_install_prompt_key(key).await?;
-            return Ok(());
-        }
-
-        if self.startup_update_prompt.is_some() {
-            self.handle_startup_update_prompt_key(key).await?;
-            return Ok(());
-        }
-
-        if self.startup_workspace_prompt.is_some() {
-            self.handle_startup_workspace_prompt_key(key).await?;
-            return Ok(());
-        }
-
-        if !self.current_tool_permission_requests.is_empty() {
-            self.handle_approval_key(key).await;
-            return Ok(());
-        }
-
-        if self.endpoint_edit.is_some() {
-            self.handle_endpoint_edit_key(key).await?;
-            return Ok(());
-        }
-
-        if self.listener_settings.is_some() {
-            self.handle_listener_settings_key(key).await?;
-            return Ok(());
-        }
-
-        if self.join_decision.is_some() {
-            self.handle_join_decision_key(key).await?;
-            return Ok(());
-        }
-
-        if self.device_manager.is_some() {
-            self.handle_device_manager_key(key).await?;
-            return Ok(());
-        }
-
-        if self.pair_wizard.is_some() {
-            self.handle_pair_wizard_key(key).await?;
-            return Ok(());
-        }
-
-        // List popups opened from the hub render above it, so they must also
-        // receive keys first; otherwise a hub key would fire under the popup
-        // (the hub's discover, audit, policy, token and leave shortcuts).
-        if self.show_list_popup && self.discover_select_pending && key.code == KeyCode::Enter {
-            self.start_pair_wizard_from_discovery().await;
-            return Ok(());
-        }
-
-        if self.show_list_popup && self.leave_confirm_pending {
-            self.handle_leave_confirm_key(key).await;
-            return Ok(());
-        }
-
-        if self.show_list_popup && self.unpair_confirm.is_some() {
-            self.handle_unpair_confirm_key(key).await;
-            return Ok(());
-        }
-
-        if self.show_list_popup {
-            return self.handle_list_popup_key(key);
-        }
-
-        if self.network_hub.is_some() {
-            self.handle_network_hub_key(key).await?;
-            return Ok(());
-        }
-
-        if self.show_help {
-            match key.code {
-                KeyCode::Esc | KeyCode::Char('?') | KeyCode::F(1) => {
-                    self.show_help = false;
-                }
-                _ => {}
-            }
-            return Ok(());
-        }
 
         match (key.code, key.modifiers) {
             (KeyCode::Char('q'), KeyModifiers::CONTROL) => {
@@ -2760,7 +2847,7 @@ impl OperitTui {
         let mut index = 0;
         while index < args.len() {
             let keyword = args[index].trim_start_matches("--").to_ascii_lowercase();
-            if !options.contains(&keyword.as_str()) {
+            if !options.iter().any(|option| option.keyword == keyword) {
                 return Err(());
             }
             let Some(value) = args.get(index + 1) else {
@@ -2803,7 +2890,10 @@ impl OperitTui {
 
     /// Executes a Space control command through the runtime-owned authorization service.
     async fn handle_network_command(&mut self, args: &[String]) -> Result<(), String> {
-        const USAGE: &str = "network opens the hub panel; subcommands: <show|bootstrap|audit|doctor|devices|identities|identity|name|listen|endpoint|admit|remove|disconnect|policy|prompts|requests|approve|reject|discover|pair|pair-confirm|pair-cancel|peers|unpair|join|joins|join-cancel|leave>";
+        let usage_string = format!(
+            "network opens the hub panel; {}",
+            network_command_usage()
+        );
         match args.first().map(String::as_str) {
             None if args.is_empty() => {
                 self.open_network_hub().await;
@@ -2856,6 +2946,7 @@ impl OperitTui {
             }
             Some("endpoint") if (2..=3).contains(&args.len()) => {
                 let (device_id, label) = self.resolve_paired_device_argument(&args[1]).await?;
+                self.require_endpoint_pairing(&device_id, &label)?;
                 if args.len() == 3 {
                     self.networkControl
                         .updatePairedDeviceEndpoint(device_id, args[2].clone(), None)
@@ -2884,7 +2975,10 @@ impl OperitTui {
                 if args[1] == "update" && args.len() >= 3 {
                     let state = self.networkControl.deviceSpaceControl()?;
                     let role_id = network_role_id(&state, &args[2])?;
-                    let display_name = args.get(3).cloned().ok_or_else(|| USAGE.to_string())?;
+                    let display_name = args
+                        .get(3)
+                        .cloned()
+                        .ok_or_else(|| usage_string.clone())?;
                     self.networkControl
                         .updateDeviceSpaceRole(NetworkControlRole {
                             roleId: role_id,
@@ -2909,7 +3003,7 @@ impl OperitTui {
                     self.status_message = self.network_clear_device_identity(&args[2]).await?;
                     return Ok(());
                 }
-                Err(USAGE.to_string())?
+                Err(usage_string)?
             }
             Some("admit") if args.len() == 2 => {
                 self.status_message = self.network_admit_device(&args[1]).await?;
@@ -2998,7 +3092,7 @@ impl OperitTui {
                 self.network_leave().await?;
             }
             _ => {
-                self.status_message = USAGE.to_string();
+                self.status_message = usage_string;
             }
         }
         Ok(())
@@ -3504,10 +3598,23 @@ impl OperitTui {
         }
     }
 
-    /// Opens the direct-address editor for one paired device. The address is
+    /// Requires a local outbound pairing before offering a dial-address edit.
+    fn require_endpoint_pairing(&self, device_id: &str, label: &str) -> Result<(), String> {
+        if self.networkControl.pairedDevicesSnapshot()?.get(device_id).is_some_and(|peer| peer.outbound) {
+            Ok(())
+        } else {
+            Err(self.text().network_endpoint_no_outbound_pairing(label))
+        }
+    }
+
+    /// Opens the direct-address editor for one outbound paired device. The address is
     /// deliberately empty: the runtime stores the dial record but does not
     /// expose it, so the operator types the replacement (same as desktop).
     fn open_endpoint_edit(&mut self, device_id: String, label: String, return_to_hub: bool) {
+        if let Err(error) = self.require_endpoint_pairing(&device_id, &label) {
+            self.status_message = error;
+            return;
+        }
         self.network_hub = None;
         self.device_manager = None;
         self.endpoint_edit = Some(EndpointEditModal {
@@ -4139,20 +4246,7 @@ impl OperitTui {
                     deviceId, label, ..
                 }) => self.open_endpoint_edit(deviceId, label, true),
                 Some(NetworkHubRow::Member(device)) => {
-                    let paired = self
-                        .network_hub
-                        .as_ref()
-                        .is_some_and(|hub| hub.paired.contains_key(&device.deviceId));
-                    if paired {
-                        self.open_endpoint_edit(
-                            device.deviceId.clone(),
-                            device.deviceName.clone(),
-                            true,
-                        );
-                    } else {
-                        self.status_message =
-                            self.text().network_endpoint_no_pairing(&device.deviceName);
-                    }
+                    self.open_endpoint_edit(device.deviceId, device.deviceName, true);
                 }
                 None => {}
             },
@@ -4511,7 +4605,7 @@ impl OperitTui {
             initialized: state.initialized,
             topology,
             blocked: state.disconnectedNodeIds,
-            paired: self.paired_device_ids(),
+            paired: self.networkControl.pairedDevicesSnapshot().unwrap_or_default(),
             requests: requests
                 .into_iter()
                 .filter(|request| request.canApprove)
@@ -4522,14 +4616,6 @@ impl OperitTui {
             menu_device_id: None,
             menu_index: 0,
         });
-    }
-
-    /// Node ids this device currently holds a pairing (edge) for.
-    fn paired_device_ids(&self) -> BTreeSet<String> {
-        self.networkControl
-            .pairedDevicesSnapshot()
-            .map(|snapshot| snapshot.into_keys().collect())
-            .unwrap_or_default()
     }
 
     /// Persists a human-friendly device model so headless servers appear as a
@@ -4615,7 +4701,7 @@ impl OperitTui {
         let Ok(topology) = self.networkControl.deviceSpaceTopology() else {
             return;
         };
-        let paired = self.paired_device_ids();
+        let paired = self.networkControl.pairedDevicesSnapshot().unwrap_or_default();
         let Some(modal) = self.device_manager.as_mut() else {
             return;
         };
@@ -6116,24 +6202,18 @@ impl OperitTui {
     }
 
     async fn refresh_context_usage_label(&mut self) {
-        match self.current_context_usage_label().await {
-            Ok(label) => {
-                self.context_usage_label = label;
+        match self.current_chat_model_status_label().await {
+            Ok(label) => self.model_label = label,
+            Err(_) => self.model_label.clear(),
+        }
+        match self.current_context_usage_text().await {
+            Ok(usage) => {
+                self.context_usage_label = usage;
             }
             Err(_) => {
                 self.context_usage_label.clear();
             }
         }
-    }
-
-    /// Persistent right footer segment: chat model binding plus context
-    /// usage. The model label used to live in the left status segment,
-    /// which the runtime refresher rewrote periodically and clobbered
-    /// command feedback.
-    async fn current_context_usage_label(&mut self) -> Result<String, String> {
-        let model_label = self.current_chat_model_status_label().await?;
-        let usage = self.current_context_usage_text().await?;
-        Ok(format!("{model_label} | {usage}"))
     }
 
     async fn current_context_usage_text(&mut self) -> Result<String, String> {
@@ -8032,7 +8112,7 @@ mod tests {
                 connections: Vec::new(),
             },
             blocked: ["tablet".to_string()].into_iter().collect(),
-            paired: BTreeSet::new(),
+            paired: BTreeMap::new(),
             requests: vec![SpaceJoinRequest {
                 requestId: "req-1".to_string(),
                 targetDeviceId: "self".to_string(),
@@ -8834,19 +8914,32 @@ mod tests {
         assert!(error.contains("1-65535"), "unexpected error: {error}");
     }
 
-    /// Updating a dial address is only possible for a device this node holds
-    /// a pairing for, and never for the local device.
+    /// Only outbound pairing grants an editable dial address, including dual direction records.
     #[test]
-    fn endpoint_action_requires_a_pairing_record() {
+    fn endpoint_action_requires_an_outbound_pairing_record() {
         let mut modal = device_manager_fixture();
         assert!(!modal
             .menu_actions("phone")
             .contains(&DeviceManagerAction::UpdateEndpoint));
-        modal.paired = ["phone".to_string()].into_iter().collect();
+        modal.paired = hub_paired_fixture();
+        modal.paired.get_mut("phone").unwrap().outbound = false;
+        assert!(!modal
+            .menu_actions("phone")
+            .contains(&DeviceManagerAction::UpdateEndpoint));
+        assert!(!modal.menu_actions("phone").contains(&DeviceManagerAction::Pair));
+        let peer = modal.paired.get_mut("phone").unwrap();
+        peer.inbound = false;
+        peer.outbound = true;
         assert!(modal
             .menu_actions("phone")
             .contains(&DeviceManagerAction::UpdateEndpoint));
-        modal.paired.insert("self".to_string());
+        modal.paired.get_mut("phone").unwrap().inbound = true;
+        assert!(modal
+            .menu_actions("phone")
+            .contains(&DeviceManagerAction::UpdateEndpoint));
+        let mut local = modal.paired["phone"].clone();
+        local.deviceId = "self".to_string();
+        modal.paired.insert("self".to_string(), local);
         assert!(modal.menu_actions("self").is_empty());
     }
 

@@ -1,5 +1,7 @@
 // ignore_for_file: file_names
 
+import 'package:operit2/l10n/generated/app_localizations.dart';
+
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -374,28 +376,34 @@ class _ChatAreaState extends State<ChatArea>
                 return ValueListenableBuilder<bool>(
                   valueListenable: _showNavigatorChipNotifier,
                   builder: (context, showNavigatorChip, _) {
-                    return ChatScrollNavigator(
-                      messages: widget.messages,
-                      currentChatId: widget.currentChatId,
-                      scrollController: widget.scrollController,
-                      messageAnchors: messageAnchors,
-                      viewportHeight: _viewportHeight,
-                      autoScrollToBottom: autoScrollToBottom,
-                      hasNewerDisplayHistory: widget.hasNewerDisplayHistory,
-                      messageNavigation: widget.messageNavigation,
-                      loadLocatorEntries: widget.loadLocatorEntries,
-                      onRequestLatestMessages: widget.onShowLatestDisplayWindow,
-                      onAutoScrollToBottomChanged:
-                          widget.onAutoScrollToBottomChanged,
-                      onJumpToMessageTimestamp: _jumpToMessageTimestamp,
-                      onJumpToMessage: _jumpToMessageIndex,
-                      onToggleFavoriteMessage: widget.onToggleFavoriteMessage,
-                      onRequestScrollToBottom: _scrollToBottomFromNavigator,
-                      showNavigatorChip: showNavigatorChip,
-                      onNavigatorChipHidden: () {
-                        _showNavigatorChipNotifier.value = false;
-                        _userScrollSessionActive = false;
-                      },
+                    return ValueListenableBuilder<bool>(
+                      valueListenable:
+                          UserPreferencesManager.chatScrollNavigatorOnLeft,
+                      builder: (context, onLeft, _) => ChatScrollNavigator(
+                        onLeft: onLeft,
+                        messages: widget.messages,
+                        currentChatId: widget.currentChatId,
+                        scrollController: widget.scrollController,
+                        messageAnchors: messageAnchors,
+                        viewportHeight: _viewportHeight,
+                        autoScrollToBottom: autoScrollToBottom,
+                        hasNewerDisplayHistory: widget.hasNewerDisplayHistory,
+                        messageNavigation: widget.messageNavigation,
+                        loadLocatorEntries: widget.loadLocatorEntries,
+                        onRequestLatestMessages:
+                            widget.onShowLatestDisplayWindow,
+                        onAutoScrollToBottomChanged:
+                            widget.onAutoScrollToBottomChanged,
+                        onJumpToMessageTimestamp: _jumpToMessageTimestamp,
+                        onJumpToMessage: _jumpToMessageIndex,
+                        onToggleFavoriteMessage: widget.onToggleFavoriteMessage,
+                        onRequestScrollToBottom: _scrollToBottomFromNavigator,
+                        showNavigatorChip: showNavigatorChip,
+                        onNavigatorChipHidden: () {
+                          _showNavigatorChipNotifier.value = false;
+                          _userScrollSessionActive = false;
+                        },
+                      ),
                     );
                   },
                 );
@@ -1598,7 +1606,7 @@ class _StatusMessage extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: SelectableText(
-        isError ? apiErrorText(text) : text,
+        isError ? apiErrorText(text, AppLocalizations.of(context)!) : text,
         style: theme.textTheme.bodySmall?.copyWith(
           color: isError
               ? theme.colorScheme.error

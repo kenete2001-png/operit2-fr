@@ -4,7 +4,7 @@ use std::sync::Arc;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::javascript::{JsExecutionEngine, ToolPkgConfigScope, ToolPkgMainRegistrationCapture};
+use crate::javascript::{JsExecutionEngine, ToolPkgConfigScope, ToolPkgMainRegistrationCapture, ToolPkgRegistrationExecutor, ToolPkgTextResourceHost};
 use crate::package::LocalizedText;
 use crate::toolpkg::ToolPkgCommonPluginConstants::*;
 use crate::toolpkg::ToolPkgParser::{
@@ -42,15 +42,15 @@ impl ToolPkgMainRegistrationScriptParser {
 
     /// Parses ToolPkg main-script registrations with archive text resources available to JavaScript.
     #[allow(non_snake_case)]
-    pub(crate) async fn parseWithTextResources(
+    pub(crate) async fn parseWithTextResources<E: ToolPkgRegistrationExecutor + ?Sized>(
         script: &str,
         toolPkgId: &str,
         mainScriptPath: &str,
         apiVersion: &str,
         environmentNames: &[String],
         configScope: ToolPkgConfigScope,
-        jsEngine: &dyn JsExecutionEngine,
-        textResources: Option<Arc<BTreeMap<String, String>>>,
+        jsEngine: &E,
+        textResources: Option<Arc<dyn ToolPkgTextResourceHost>>,
     ) -> ToolPkgMainRegistrationParseResult {
         let mut params = BTreeMap::new();
         params.insert(
@@ -83,7 +83,7 @@ impl ToolPkgMainRegistrationScriptParser {
         );
 
         let capturedResult = jsEngine
-            .execute_toolpkg_main_registration_function_with_text_resources(
+            .register_toolpkg(
                 script,
                 "registerToolPkg",
                 &params,
@@ -691,6 +691,18 @@ mod tests {
                     "description":{"en":"Greets the user","zh":"问候用户"},
                     "usage":"/hello <name>",
                     "function":"runHello"
+                }"#.to_string(),
+                r#"{
+                    "id":"goal_command",
+                    "name":"goal",
+                    "title":{"en":"Goal"},
+                    "description":{"en":"Manages goals"},
+                    "usage":"/goal <objective>",
+                    "args":[
+                        {"name":"objective","options":["set","edit","pause"]},
+                        {"name":"dryRun","required":false}
+                    ],
+                    "function":"runGoal"
                 }"#
             .to_string()],
             aiProviders: vec![r#"{
@@ -738,6 +750,18 @@ mod tests {
         assert_eq!(registration.coreCommands[0].name, "hello");
         assert_eq!(registration.coreCommands[0].title.resolve(true), "Hello");
         assert_eq!(registration.coreCommands[0].function, "runHello");
+        assert!(registration.coreCommands[0].args.is_empty());
+
+        assert_eq!(registration.coreCommands[1].args.len(), 2);
+        assert_eq!(registration.coreCommands[1].args[0].name, "objective");
+        assert!(registration.coreCommands[1].args[0].required);
+        assert_eq!(
+            registration.coreCommands[1].args[0].options,
+            vec!["set".to_string(), "edit".to_string(), "pause".to_string()]
+        );
+        assert_eq!(registration.coreCommands[1].args[1].name, "dryRun");
+        assert!(!registration.coreCommands[1].args[1].required);
+        assert!(registration.coreCommands[1].args[1].options.is_empty());
 
         assert_eq!(registration.aiProviders[0].displayName, "provider");
         assert_eq!(
