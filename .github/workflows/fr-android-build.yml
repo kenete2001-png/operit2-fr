@@ -76,7 +76,9 @@ jobs:
     timeout-minutes: 330
     env:
       RUST_TOOLCHAIN_VERSION: 1.95.0
-      V8_NDK_VERSION: 27.3.13750724
+      # Même NDK que celui imposé par Gradle (flutter.ndkVersion), sinon le
+      # job Windows juge le cache V8 incompatible et tente de le recompiler.
+      V8_NDK_VERSION: 28.2.13676358
 
     defaults:
       run:
@@ -130,6 +132,8 @@ jobs:
         run: |
           python3 tools/build_scripts/prepare_android_v8.py --target aarch64-linux-android --env-file "$RUNNER_TEMP/v8.env"
           cat "$RUNNER_TEMP/v8.env"
+          grep -h '"android_ndk_version"' tools/release/work/android-v8/*/aarch64-linux-android/manifest.json
+          grep -q "\"android_ndk_version\": \"${V8_NDK_VERSION}\"" tools/release/work/android-v8/*/aarch64-linux-android/manifest.json
           mkdir -p v8-out
           echo "V8 Android arm64 construit sous Linux" > v8-out/LISEZMOI.txt
           for d in tools/release/work/android-v8/*/aarch64-linux-android; do
@@ -291,7 +295,7 @@ jobs:
       - name: Épingler le NDK de V8 (même version que le job Linux)
         shell: pwsh
         run: |
-          $ndk = "27.3.13750724"
+          $ndk = "28.2.13676358"  # = flutter.ndkVersion (Gradle)
           $sdkm = Join-Path $env:ANDROID_HOME "cmdline-tools/latest/bin/sdkmanager.bat"
           "y`ny`ny`n" | & $sdkm "ndk;$ndk" | Out-Null
           $dir = Join-Path $env:ANDROID_HOME "ndk/$ndk"
